@@ -2,7 +2,7 @@ from setuptools import find_packages, setup
 
 setup(
     name='netbox-obudozer',
-    version='0.1.0',
+    version='0.1.1',
     description='Плагин управления ресурсами ЦОД.',
     author='Виктор Стеганцев',
     author_email='your.email@example.com',
