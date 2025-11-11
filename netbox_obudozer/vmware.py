@@ -6,6 +6,12 @@
 """
 from typing import List, Dict
 
+# Имя кластера vCenter для синхронизации
+cluster_info = {
+    'cluster_name': 'vcenter_obu',
+    'cluster_type': 'vmware',
+}
+
 
 def get_vcenter_vms() -> List[Dict]:
     """

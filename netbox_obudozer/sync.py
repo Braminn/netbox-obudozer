@@ -11,9 +11,12 @@
 from typing import Dict, List, Tuple
 from django.db import transaction
 from django.utils import timezone
+from django.contrib.contenttypes.models import ContentType
+from virtualization.models import ClusterType, Cluster, VirtualMachine
+from extras.models import CustomField
 
 from .models import VMRecord
-from .vmware import get_vcenter_vms, test_vcenter_connection
+from .vmware import get_vcenter_vms, test_vcenter_connection, cluster_info
 
 
 class SyncResult:
@@ -260,7 +263,53 @@ def sync_vcenter_vms() -> SyncResult:
             result.errors.append("Не удалось подключиться к vCenter")
             result.finish()
             return result
-        
+
+        # Проверяем/создаем ClusterType для vCenter
+        cluster_type_name = cluster_info['cluster_type'].capitalize()  # 'vmware' -> 'VMware'
+        cluster_type_slug = cluster_info['cluster_type'].lower()  # 'vmware'
+
+        cluster_type, created = ClusterType.objects.get_or_create(
+            slug=cluster_type_slug,
+            defaults={'name': cluster_type_name}
+        )
+
+        # Проверяем/создаем Cluster для vCenter
+        cluster_name = cluster_info['cluster_name']  # 'vcenet_obu'
+
+        cluster, created = Cluster.objects.get_or_create(
+            name=cluster_name,
+            defaults={'type': cluster_type}
+        )
+
+        # Проверяем/создаем Custom Field для хранения ID из платформы виртуализации
+        vm_cluster_id_field, created = CustomField.objects.get_or_create(
+            name='vm_cluster_id',
+            defaults={
+                'label': 'VM Cluster ID',
+                'type': 'text',
+                'description': 'Уникальный идентификатор VM',
+                'required': False,
+            }
+        )
+
+        # Проверяем/создаем Custom Field для человекочитаемого названия ОС
+        pretty_os_name_field, created = CustomField.objects.get_or_create(
+            name='pretty_os_name',
+            defaults={
+                'label': 'OS',
+                'type': 'text',
+                'description': 'Операционная система',
+                'required': False,
+            }
+        )
+
+        # Привязываем Custom Fields к VirtualMachine если еще не привязано
+        vm_content_type = ContentType.objects.get_for_model(VirtualMachine)
+        if vm_content_type not in vm_cluster_id_field.object_types.all():
+            vm_cluster_id_field.object_types.add(vm_content_type)
+        if vm_content_type not in pretty_os_name_field.object_types.all():
+            pretty_os_name_field.object_types.add(vm_content_type)
+
         # Получаем VM из vCenter
         vcenter_vms = get_vcenter_vms()
         
