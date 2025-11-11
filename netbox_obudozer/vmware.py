@@ -4,7 +4,6 @@
 Содержит функции для получения данных о виртуальных машинах из vCenter.
 В текущей версии использует эмулятор для тестирования.
 """
-import random
 from typing import List, Dict
 
 
@@ -30,34 +29,31 @@ def get_vcenter_vms() -> List[Dict]:
         ...
     """
     
-    # Возможные состояния VM
-    states = ['running', 'stopped']
-    
     # Захардкоженный список виртуальных машин для тестирования
     vms = [
         {
             'name': 'vm01',
-            'state': random.choice(states),
+            'state': 'running',
             'vcenter_id': 'vm-1001',
         },
         {
             'name': 'vm02',
-            'state': random.choice(states),
+            'state': 'stopped',
             'vcenter_id': 'vm-1002',
         },
         {
             'name': 'vm03',
-            'state': random.choice(states),
+            'state': 'running',
             'vcenter_id': 'vm-1003',
         },
         {
             'name': 'vm04',
-            'state': random.choice(states),
+            'state': 'running',
             'vcenter_id': 'vm-1004',
         },
         {
             'name': 'vm05',
-            'state': random.choice(states),
+            'state': 'stopped',
             'vcenter_id': 'vm-1005',
         },
     ]
