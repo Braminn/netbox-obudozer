@@ -16,18 +16,19 @@ from .sync import sync_vcenter_vms, get_sync_status
 class VMRecordListView(generic.ObjectListView):
     """
     View для отображения списка VM Records.
-    
+
     Отображает таблицу со всеми виртуальными машинами.
     Поддерживает фильтрацию и поиск.
     """
     queryset = models.VMRecord.objects.all()
     table = tables.VMRecordTable
     filterset = filtersets.VMRecordFilterSet
-    
+    template_name = 'netbox_obudozer/vmrecord_list.html'
+
     def get_extra_context(self, request):
         """
         Добавляет дополнительный контекст для шаблона.
-        
+
         Передает статус синхронизации для отображения в UI.
         """
         context = super().get_extra_context(request)
@@ -69,21 +70,16 @@ class VMRecordBulkDeleteView(generic.BulkDeleteView):
 def sync_vcenter_view(request):
     """
     View для запуска синхронизации с vCenter из интерфейса.
-    
+
     Выполняет синхронизацию и перенаправляет обратно на список VM
     с сообщением о результатах.
-    
+
     Args:
         request: HTTP request объект
-    
+
     Returns:
         HttpResponseRedirect: Перенаправление на список VM
     """
-    # Проверяем права доступа
-    if not request.user.has_perm('netbox_obudozer.add_vmrecord'):
-        messages.error(request, "У вас недостаточно прав для выполнения синхронизации.")
-        return redirect('plugins:netbox_obudozer:vmrecord_list')
-    
     try:
         # Выполняем синхронизацию
         result = sync_vcenter_vms()

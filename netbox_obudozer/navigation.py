@@ -18,12 +18,6 @@ menu_items = (
                 icon_class='mdi mdi-plus-thick',
                 color=ButtonColorChoices.GREEN
             ),
-            PluginMenuButton(
-                link='plugins:netbox_obudozer:sync_vcenter',
-                title='Sync vCenter',
-                icon_class='mdi mdi-sync',
-                color=ButtonColorChoices.BLUE
-            ),
         )
     ),
 )

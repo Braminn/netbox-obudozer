@@ -1,28 +1,16 @@
 {% extends 'generic/object_list.html' %}
-{% load buttons %}
 
 {% block title %}VM Records{% endblock %}
 
-{% block header %}
-    <div class="d-flex justify-content-between align-items-center">
-        <div>
-            <h1>{% block page_title %}VM Records{% endblock %}</h1>
-        </div>
-        <div class="btn-group" role="group">
-            {% if perms.netbox_obudozer.add_vmrecord %}
-                <a href="{% url 'plugins:netbox_obudozer:vmrecord_add' %}" class="btn btn-success">
-                    <i class="mdi mdi-plus-thick"></i> Добавить VM
-                </a>
-                <a href="{% url 'plugins:netbox_obudozer:sync_vcenter' %}" class="btn btn-primary" 
-                   onclick="return confirm('Вы уверены, что хотите запустить синхронизацию с vCenter?');">
-                    <i class="mdi mdi-sync"></i> Синхронизировать с vCenter
-                </a>
-            {% endif %}
-        </div>
-    </div>
+{% block extra_controls %}
+    {{ block.super }}
+    <a href="{% url 'plugins:netbox_obudozer:sync_vcenter' %}" class="btn btn-primary"
+       onclick="return confirm('Вы уверены, что хотите запустить синхронизацию с vCenter?');">
+        <i class="mdi mdi-sync"></i> Синхронизировать с vCenter
+    </a>
 {% endblock %}
 
-{% block extra_controls %}
+{% block content %}
     <div class="card mb-3">
         <div class="card-body">
             <h5 class="card-title">
@@ -55,18 +43,19 @@
             {% if sync_status.last_sync %}
                 <div class="mt-2">
                     <small class="text-muted">
-                        <i class="mdi mdi-clock-outline"></i> 
+                        <i class="mdi mdi-clock-outline"></i>
                         Последняя синхронизация: {{ sync_status.last_sync|date:"d.m.Y H:i:s" }}
                     </small>
                 </div>
             {% else %}
                 <div class="mt-2">
                     <small class="text-muted">
-                        <i class="mdi mdi-alert"></i> 
+                        <i class="mdi mdi-alert"></i>
                         Синхронизация еще не выполнялась
                     </small>
                 </div>
             {% endif %}
         </div>
     </div>
+    {{ block.super }}
 {% endblock %}
