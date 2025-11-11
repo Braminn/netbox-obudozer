@@ -4,21 +4,67 @@
 <div class="row">
     <div class="col col-md-6">
         <div class="card">
-            <h5 class="card-header">VM Information</h5>
+            <h5 class="card-header">
+                <i class="mdi mdi-server"></i> VM Information
+            </h5>
             <div class="card-body">
                 <table class="table table-hover attr-table">
                     <tr>
                         <th scope="row">Name</th>
-                        <td>{{ object.name }}</td>
+                        <td>
+                            {% if not object.exist %}
+                                <i class="mdi mdi-alert text-warning"></i>
+                            {% elif object.state == 'running' %}
+                                <i class="mdi mdi-play-circle text-success"></i>
+                            {% else %}
+                                <i class="mdi mdi-stop-circle text-secondary"></i>
+                            {% endif %}
+                            {{ object.name }}
+                        </td>
                     </tr>
                     <tr>
                         <th scope="row">State</th>
                         <td>
-                            <span class="badge bg-{% if object.state == 'running' %}success{% elif object.state == 'stopped' %}secondary{% elif object.state == 'paused' %}warning{% else %}danger{% endif %}">
+                            <span class="badge bg-{% if object.state == 'running' %}success{% else %}secondary{% endif %}">
                                 {{ object.get_state_display }}
                             </span>
                         </td>
                     </tr>
+                    <tr>
+                        <th scope="row">vCenter ID</th>
+                        <td>
+                            {% if object.vcenter_id %}
+                                <code>{{ object.vcenter_id }}</code>
+                            {% else %}
+                                <span class="text-muted">—</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Exists in vCenter</th>
+                        <td>
+                            {% if object.exist %}
+                                <span class="badge bg-success">
+                                    <i class="mdi mdi-check"></i> Yes
+                                </span>
+                            {% else %}
+                                <span class="badge bg-warning">
+                                    <i class="mdi mdi-alert"></i> Not Found
+                                </span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+    </div>
+    <div class="col col-md-6">
+        <div class="card">
+            <h5 class="card-header">
+                <i class="mdi mdi-clock-outline"></i> Timestamps
+            </h5>
+            <div class="card-body">
+                <table class="table table-hover attr-table">
                     <tr>
                         <th scope="row">Created</th>
                         <td>{{ object.created|date:"Y-m-d H:i:s" }}</td>
@@ -27,9 +73,41 @@
                         <th scope="row">Last Updated</th>
                         <td>{{ object.last_updated|date:"Y-m-d H:i:s" }}</td>
                     </tr>
+                    <tr>
+                        <th scope="row">Last Synced</th>
+                        <td>
+                            {% if object.last_synced %}
+                                {{ object.last_synced|date:"Y-m-d H:i:s" }}
+                            {% else %}
+                                <span class="text-muted">Never</span>
+                            {% endif %}
+                        </td>
+                    </tr>
                 </table>
             </div>
         </div>
     </div>
 </div>
+
+{% if not object.exist %}
+<div class="row mt-3">
+    <div class="col">
+        <div class="alert alert-warning" role="alert">
+            <h4 class="alert-heading">
+                <i class="mdi mdi-alert"></i> VM Not Found in vCenter
+            </h4>
+            <p>
+                Эта виртуальная машина не была найдена в vCenter при последней синхронизации.
+                Возможно, она была удалена или переименована.
+            </p>
+            <hr>
+            <p class="mb-0">
+                <small>
+                    Запустите синхронизацию для обновления статуса или удалите эту запись вручную.
+                </small>
+            </p>
+        </div>
+    </div>
+</div>
+{% endif %}
 {% endblock content %}
