@@ -9,7 +9,7 @@ import logging
 import atexit
 
 from pyVim.connect import SmartConnect, Disconnect
-from pyVmomi import vim
+from pyVmomi import vim, vmodl
 from tqdm import tqdm
 
 # Настройка логирования
@@ -133,31 +133,33 @@ def get_vcenter_vms() -> List[Dict]:
         )
 
         # Определяем нужные свойства для получения
-        property_spec = vim.PropertyFilterSpec.PropertySpec(
+        property_spec = vmodl.query.PropertyCollector.PropertySpec(
             type=vim.VirtualMachine,
             pathSet=['name', 'runtime.powerState', 'config.instanceUuid', 'config.uuid']
         )
 
         # Определяем объекты для запроса
-        object_spec = vim.PropertyFilterSpec.ObjectSpec(
+        traversal_spec = vmodl.query.PropertyCollector.TraversalSpec(
+            type=vim.ContainerView,
+            path='view',
+            skip=False
+        )
+
+        object_spec = vmodl.query.PropertyCollector.ObjectSpec(
             obj=container_view,
             skip=True,
-            selectSet=[vim.TraversalSpec(
-                type=vim.ContainerView,
-                path='view',
-                skip=False
-            )]
+            selectSet=[traversal_spec]
         )
 
         # Создаем спецификацию фильтра
-        filter_spec = vim.PropertyFilterSpec(
+        filter_spec = vmodl.query.PropertyCollector.FilterSpec(
             propSet=[property_spec],
             objectSet=[object_spec]
         )
 
         # Получаем ВСЕ свойства ВСЕХ ВМ одним запросом!
         logger.info("Retrieving VM properties from vCenter (single request)...")
-        options = vim.RetrieveOptions()
+        options = vmodl.query.PropertyCollector.RetrieveOptions()
         result = content.propertyCollector.RetrievePropertiesEx(
             specSet=[filter_spec],
             options=options
