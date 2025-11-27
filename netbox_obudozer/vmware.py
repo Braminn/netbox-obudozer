@@ -10,6 +10,7 @@ import atexit
 
 from pyVim.connect import SmartConnect, Disconnect
 from pyVmomi import vim
+from tqdm import tqdm
 
 # Настройка логирования
 logger = logging.getLogger('netbox.plugins.netbox_obudozer')
@@ -95,8 +96,8 @@ def get_vcenter_vms() -> List[Dict]:
     """
     Получает список виртуальных машин из VMware vCenter.
 
-    Подключается к vCenter через pyVmomi и извлекает информацию о всех
-    виртуальных машинах.
+    Использует PropertyCollector API для эффективного получения всех данных
+    одним запросом вместо множества отдельных запросов для каждой ВМ.
 
     Returns:
         List[Dict]: Список словарей с данными о VM, каждый содержит:
@@ -121,39 +122,82 @@ def get_vcenter_vms() -> List[Dict]:
 
     try:
         # Подключаемся к vCenter
+        logger.info("Connecting to vCenter...")
         si = _connect_vcenter()
-
-        # Получаем content
         content = si.RetrieveContent()
 
         # Создаем container view для всех VirtualMachine объектов
         container = content.rootFolder
-        view_type = [vim.VirtualMachine]
-        recursive = True
-
         container_view = content.viewManager.CreateContainerView(
-            container, view_type, recursive
+            container, [vim.VirtualMachine], True
         )
 
-        # Обрабатываем все ВМ
-        for vm in container_view.view:
+        # Определяем нужные свойства для получения
+        property_spec = vim.PropertyFilterSpec.PropertySpec(
+            type=vim.VirtualMachine,
+            pathSet=['name', 'runtime.powerState', 'config.instanceUuid', 'config.uuid']
+        )
+
+        # Определяем объекты для запроса
+        object_spec = vim.PropertyFilterSpec.ObjectSpec(
+            obj=container_view,
+            skip=True,
+            selectSet=[vim.TraversalSpec(
+                type=vim.ContainerView,
+                path='view',
+                skip=False
+            )]
+        )
+
+        # Создаем спецификацию фильтра
+        filter_spec = vim.PropertyFilterSpec(
+            propSet=[property_spec],
+            objectSet=[object_spec]
+        )
+
+        # Получаем ВСЕ свойства ВСЕХ ВМ одним запросом!
+        logger.info("Retrieving VM properties from vCenter (single request)...")
+        options = vim.RetrieveOptions()
+        result = content.propertyCollector.RetrievePropertiesEx(
+            specSet=[filter_spec],
+            options=options
+        )
+
+        # Собираем все объекты из всех страниц (если есть pagination)
+        all_objects = []
+        while result:
+            all_objects.extend(result.objects)
+            if result.token:
+                result = content.propertyCollector.ContinueRetrievePropertiesEx(token=result.token)
+            else:
+                break
+
+        # Обрабатываем результаты с прогресс-баром
+        logger.info(f"Processing {len(all_objects)} VMs...")
+        for obj in tqdm(all_objects, desc="Processing VMs", unit="VM"):
             try:
-                # Получаем данные ВМ
+                # Собираем свойства в словарь
+                props = {}
+                for prop in obj.propSet:
+                    props[prop.name] = prop.val
+
+                # Формируем данные ВМ
                 vm_data = {
-                    'name': vm.name,
-                    'state': _map_power_state(vm.runtime.powerState) if vm.runtime else 'stopped',
-                    'vcenter_id': vm.config.instanceUuid if vm.config else vm._moId,
+                    'name': props.get('name', 'Unknown'),
+                    'state': _map_power_state(props.get('runtime.powerState', 'poweredOff')),
+                    'vcenter_id': props.get('config.instanceUuid') or props.get('config.uuid', ''),
                 }
                 vms.append(vm_data)
 
             except Exception as e:
-                logger.warning(f"Failed to get data for VM {getattr(vm, 'name', 'unknown')}: {e}")
+                vm_name = props.get('name', 'unknown') if 'props' in locals() else 'unknown'
+                logger.warning(f"Failed to process VM {vm_name}: {e}")
                 continue
 
         # Уничтожаем view
         container_view.Destroy()
 
-        logger.info(f"Successfully retrieved {len(vms)} VMs from vCenter")
+        logger.info(f"Successfully retrieved {len(vms)} VMs from vCenter using PropertyCollector")
 
     except Exception as e:
         logger.error(f"Error retrieving VMs from vCenter: {e}")
