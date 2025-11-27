@@ -15,7 +15,6 @@ from django.contrib.contenttypes.models import ContentType
 from virtualization.models import ClusterType, Cluster, VirtualMachine
 from extras.models import CustomField
 
-from .models import VMRecord
 from .vmware import get_vcenter_vms, test_vcenter_connection, cluster_info
 
 
@@ -85,55 +84,59 @@ class VMDiff:
     
     def __init__(self):
         self.to_create: List[Dict] = []
-        self.to_update: List[Tuple[VMRecord, Dict]] = []
-        self.to_skip: List[VMRecord] = []
-        self.to_mark_missing: List[VMRecord] = []
+        self.to_update: List[Tuple[VirtualMachine, Dict]] = []
+        self.to_skip: List[VirtualMachine] = []
+        self.to_mark_missing: List[VirtualMachine] = []
 
 
-def get_field_changes(vm_record: VMRecord, vcenter_data: Dict) -> Dict:
+def get_field_changes(vm: VirtualMachine, vcenter_data: Dict) -> Dict:
     """
     Определяет какие поля изменились.
-    
+
     Args:
-        vm_record: Существующая запись VM в NetBox
+        vm: Существующая VirtualMachine в NetBox
         vcenter_data: Новые данные из vCenter
-    
+
     Returns:
         Dict с измененными полями: {'field_name': {'old': old_value, 'new': new_value}}
-    
+
     Example:
         >>> changes = get_field_changes(vm, {'state': 'running'})
         >>> print(changes)
-        {'state': {'old': 'stopped', 'new': 'running'}}
+        {'status': {'old': 'offline', 'new': 'active'}}
     """
     changes = {}
-    
-    # Проверяем state
-    if vm_record.state != vcenter_data['state']:
-        changes['state'] = {
-            'old': vm_record.state,
-            'new': vcenter_data['state']
+
+    # Конвертация state из vCenter в status NetBox
+    vcenter_status = 'active' if vcenter_data['state'] == 'running' else 'offline'
+
+    # Проверяем status
+    if vm.status != vcenter_status:
+        changes['status'] = {
+            'old': vm.status,
+            'new': vcenter_status
         }
-    
-    # Проверяем vcenter_id (может измениться при пересоздании VM)
-    vcenter_id = vcenter_data.get('vcenter_id')
-    if vcenter_id and vm_record.vcenter_id != vcenter_id:
+
+    # Проверяем vcenter_id через Custom Fields
+    current_vcenter_id = vm.custom_field_data.get('vcenter_id') if vm.custom_field_data else None
+    new_vcenter_id = vcenter_data.get('vcenter_id')
+    if new_vcenter_id and current_vcenter_id != new_vcenter_id:
         changes['vcenter_id'] = {
-            'old': vm_record.vcenter_id,
-            'new': vcenter_id
+            'old': current_vcenter_id,
+            'new': new_vcenter_id
         }
-    
-    # Если VM была помечена как отсутствующая, но теперь найдена
-    if not vm_record.exist:
-        changes['exist'] = {
-            'old': False,
-            'new': True
+
+    # Если VM была помечена как decommissioning, но теперь найдена в vCenter
+    if vm.status == 'decommissioning':
+        changes['status'] = {
+            'old': 'decommissioning',
+            'new': vcenter_status
         }
-    
+
     return changes
 
 
-def calculate_diff(vcenter_vms: List[Dict], existing_vms: Dict[str, VMRecord]) -> VMDiff:
+def calculate_diff(vcenter_vms: List[Dict], existing_vms: Dict[str, VirtualMachine]) -> VMDiff:
     """
     ФАЗА 2: Вычисляет различия между vCenter и NetBox.
     
@@ -167,74 +170,93 @@ def calculate_diff(vcenter_vms: List[Dict], existing_vms: Dict[str, VMRecord]) -
     
     # Находим VM которых нет в vCenter
     for vm_name, vm_record in existing_vms.items():
-        if vm_name not in vcenter_names and vm_record.exist:
+        if vm_name not in vcenter_names and vm_record.status != 'decommissioning':
             diff.to_mark_missing.append(vm_record)
     
     return diff
 
 
 @transaction.atomic
-def apply_changes(diff: VMDiff, result: SyncResult) -> SyncResult:
+def apply_changes(diff: VMDiff, result: SyncResult, cluster: Cluster) -> SyncResult:
     """
     ФАЗА 3: Применяет изменения к базе данных.
-    
+
     Выполняется в транзакции для обеспечения целостности данных.
-    
+
     Args:
         diff: Объект с вычисленными различиями
         result: Объект для сохранения результатов
-    
+        cluster: Кластер vCenter к которому привязаны VM
+
     Returns:
         Обновленный SyncResult
     """
     sync_time = timezone.now()
-    
+
     # Создание новых VM
     for vm_data in diff.to_create:
         try:
-            VMRecord.objects.create(
+            # Конвертация state → status
+            status = 'active' if vm_data['state'] == 'running' else 'offline'
+
+            vm = VirtualMachine.objects.create(
                 name=vm_data['name'],
-                state=vm_data['state'],
-                vcenter_id=vm_data.get('vcenter_id'),
-                exist=True,
-                last_synced=sync_time
+                cluster=cluster,
+                status=status,
             )
+
+            # Заполнение Custom Fields
+            vm.custom_field_data = vm.custom_field_data or {}
+            vm.custom_field_data['vcenter_id'] = vm_data.get('vcenter_id')
+            vm.custom_field_data['last_synced'] = sync_time.isoformat()
+            vm.save()
+
             result.created += 1
         except Exception as e:
             result.errors.append(f"Ошибка создания VM '{vm_data['name']}': {str(e)}")
-    
+
     # Обновление существующих VM
-    for vm_record, changes in diff.to_update:
+    for vm, changes in diff.to_update:
         try:
             # Применяем изменения
             for field_name, change in changes.items():
-                setattr(vm_record, field_name, change['new'])
-            
-            vm_record.last_synced = sync_time
-            vm_record.save()
+                if field_name == 'vcenter_id':
+                    vm.custom_field_data = vm.custom_field_data or {}
+                    vm.custom_field_data['vcenter_id'] = change['new']
+                else:
+                    setattr(vm, field_name, change['new'])
+
+            vm.custom_field_data = vm.custom_field_data or {}
+            vm.custom_field_data['last_synced'] = sync_time.isoformat()
+            vm.save()
             # NetBox автоматически создаст ObjectChange запись
-            
+
             result.updated += 1
         except Exception as e:
-            result.errors.append(f"Ошибка обновления VM '{vm_record.name}': {str(e)}")
-    
+            result.errors.append(f"Ошибка обновления VM '{vm.name}': {str(e)}")
+
     # Подсчет неизмененных
     result.unchanged = len(diff.to_skip)
-    
-    # Пометка отсутствующих VM
+
+    # Пометка отсутствующих VM статусом decommissioning
     missing_ids = [vm.id for vm in diff.to_mark_missing]
     if missing_ids:
         try:
-            VMRecord.objects.filter(id__in=missing_ids).update(
-                exist=False,
-                last_synced=sync_time
+            VirtualMachine.objects.filter(id__in=missing_ids).update(
+                status='decommissioning'
             )
+            # Обновляем last_synced в Custom Fields
+            for vm in VirtualMachine.objects.filter(id__in=missing_ids):
+                vm.custom_field_data = vm.custom_field_data or {}
+                vm.custom_field_data['last_synced'] = sync_time.isoformat()
+                vm.save()
+
             result.marked_missing = len(missing_ids)
         except Exception as e:
             result.errors.append(f"Ошибка пометки отсутствующих VM: {str(e)}")
-    
+
     result.total_processed = len(diff.to_create) + len(diff.to_update) + len(diff.to_skip)
-    
+
     return result
 
 
@@ -275,47 +297,52 @@ def sync_vcenter_vms() -> SyncResult:
         )
 
         # Проверяем/создаем Cluster для vCenter
-        cluster_name = cluster_info['cluster_name']  # 'vcenet_obu'
+        cluster_name = cluster_info['cluster_name']  # 'vcenter_obu'
 
         cluster, created = Cluster.objects.get_or_create(
             name=cluster_name,
-            defaults={'type': cluster_type}
+            defaults={
+                'type': cluster_type,
+                'status': 'active'
+            }
         )
 
-        # Проверяем/создаем Custom Field для хранения ID из платформы виртуализации
-        vm_cluster_id_field, created = CustomField.objects.get_or_create(
-            name='vm_cluster_id',
+        # Проверяем/создаем Custom Field для vCenter ID
+        vcenter_id_field, created = CustomField.objects.get_or_create(
+            name='vcenter_id',
             defaults={
-                'label': 'VM Cluster ID',
+                'label': 'vCenter ID',
                 'type': 'text',
-                'description': 'Уникальный идентификатор VM',
+                'description': 'Уникальный идентификатор VM в vCenter',
                 'required': False,
             }
         )
 
-        # Проверяем/создаем Custom Field для человекочитаемого названия ОС
-        pretty_os_name_field, created = CustomField.objects.get_or_create(
-            name='pretty_os_name',
+        # Проверяем/создаем Custom Field для времени синхронизации
+        last_synced_field, created = CustomField.objects.get_or_create(
+            name='last_synced',
             defaults={
-                'label': 'OS',
-                'type': 'text',
-                'description': 'Операционная система',
+                'label': 'Last Synced',
+                'type': 'datetime',
+                'description': 'Время последней синхронизации с vCenter',
                 'required': False,
             }
         )
 
-        # Привязываем Custom Fields к VirtualMachine если еще не привязано
+        # Привязываем Custom Fields к VirtualMachine
         vm_content_type = ContentType.objects.get_for_model(VirtualMachine)
-        if vm_content_type not in vm_cluster_id_field.object_types.all():
-            vm_cluster_id_field.object_types.add(vm_content_type)
-        if vm_content_type not in pretty_os_name_field.object_types.all():
-            pretty_os_name_field.object_types.add(vm_content_type)
+        for field in [vcenter_id_field, last_synced_field]:
+            if vm_content_type not in field.object_types.all():
+                field.object_types.add(vm_content_type)
 
         # Получаем VM из vCenter
         vcenter_vms = get_vcenter_vms()
-        
-        # Получаем существующие VM из NetBox
-        existing_vms = {vm.name: vm for vm in VMRecord.objects.all()}
+
+        # Получаем существующие VM из NetBox (только из нашего кластера vCenter)
+        existing_vms = {
+            vm.name: vm
+            for vm in VirtualMachine.objects.filter(cluster=cluster)
+        }
         
     except Exception as e:
         result.errors.append(f"Ошибка получения данных: {str(e)}")
@@ -332,7 +359,7 @@ def sync_vcenter_vms() -> SyncResult:
     
     # ФАЗА 3: APPLY - Применение изменений
     try:
-        result = apply_changes(diff, result)
+        result = apply_changes(diff, result, cluster)
     except Exception as e:
         result.errors.append(f"Ошибка применения изменений: {str(e)}")
     
@@ -340,37 +367,61 @@ def sync_vcenter_vms() -> SyncResult:
     return result
 
 
-def get_sync_status() -> Dict:
+def get_sync_status(cluster_name: str = 'vcenter_obu') -> Dict:
     """
     Возвращает текущий статус синхронизации.
-    
+
+    Args:
+        cluster_name: Имя кластера vCenter (по умолчанию 'vcenter_obu')
+
     Returns:
         Dict со статистикой:
-            - total_vms: Общее количество VM в NetBox
-            - existing_vms: Количество существующих VM
-            - missing_vms: Количество отсутствующих VM
+            - total_vms: Общее количество VM в кластере
+            - active_vms: Количество активных VM (running)
+            - offline_vms: Количество остановленных VM (stopped)
+            - decommissioning_vms: Количество удаленных из vCenter VM
             - vcenter_available: Доступность vCenter
             - last_sync: Время последней синхронизации
-    
+
     Example:
         >>> status = get_sync_status()
         >>> print(f"Всего VM: {status['total_vms']}")
     """
-    total_vms = VMRecord.objects.count()
-    existing_vms = VMRecord.objects.filter(exist=True).count()
-    missing_vms = VMRecord.objects.filter(exist=False).count()
-    
-    # Получаем время последней синхронизации
-    last_synced_vm = VMRecord.objects.filter(
-        last_synced__isnull=False
-    ).order_by('-last_synced').first()
-    
-    last_sync = last_synced_vm.last_synced if last_synced_vm else None
-    
-    return {
-        'total_vms': total_vms,
-        'existing_vms': existing_vms,
-        'missing_vms': missing_vms,
-        'vcenter_available': test_vcenter_connection(),
-        'last_sync': last_sync
-    }
+    try:
+        cluster = Cluster.objects.get(name=cluster_name)
+        vms = VirtualMachine.objects.filter(cluster=cluster)
+
+        total_vms = vms.count()
+        active_vms = vms.filter(status='active').count()
+        offline_vms = vms.filter(status='offline').count()
+        decommissioning_vms = vms.filter(status='decommissioning').count()
+
+        # Получаем время последней синхронизации из Custom Fields
+        last_sync = None
+        for vm in vms.order_by('-last_updated')[:1]:
+            last_synced_str = vm.custom_field_data.get('last_synced') if vm.custom_field_data else None
+            if last_synced_str:
+                try:
+                    from dateutil import parser
+                    last_sync = parser.parse(last_synced_str)
+                except:
+                    pass
+                break
+
+        return {
+            'total_vms': total_vms,
+            'active_vms': active_vms,
+            'offline_vms': offline_vms,
+            'decommissioning_vms': decommissioning_vms,
+            'vcenter_available': test_vcenter_connection(),
+            'last_sync': last_sync
+        }
+    except Cluster.DoesNotExist:
+        return {
+            'total_vms': 0,
+            'active_vms': 0,
+            'offline_vms': 0,
+            'decommissioning_vms': 0,
+            'vcenter_available': test_vcenter_connection(),
+            'last_sync': None
+        }

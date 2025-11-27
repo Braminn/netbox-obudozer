@@ -1,0 +1,158 @@
+{% extends 'base/layout.html' %}
+{% load buttons %}
+
+{% block title %}Синхронизация vCenter{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <h1>
+                <i class="mdi mdi-sync"></i>
+                Синхронизация vCenter
+            </h1>
+            <hr>
+        </div>
+    </div>
+
+    <!-- Статус синхронизации -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">
+                        <i class="mdi mdi-information"></i> Статус синхронизации
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-2">
+                            <div class="small text-muted">Всего VM</div>
+                            <div class="h3">{{ sync_status.total_vms }}</div>
+                        </div>
+                        <div class="col-md-2">
+                            <div class="small text-muted">Активные</div>
+                            <div class="h3 text-success">
+                                <i class="mdi mdi-play-circle"></i> {{ sync_status.active_vms }}
+                            </div>
+                        </div>
+                        <div class="col-md-2">
+                            <div class="small text-muted">Остановленные</div>
+                            <div class="h3 text-secondary">
+                                <i class="mdi mdi-stop-circle"></i> {{ sync_status.offline_vms }}
+                            </div>
+                        </div>
+                        <div class="col-md-2">
+                            <div class="small text-muted">Списанные</div>
+                            <div class="h3 text-warning">
+                                <i class="mdi mdi-alert-circle"></i> {{ sync_status.decommissioning_vms }}
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="small text-muted">Статус vCenter</div>
+                            <div class="h3">
+                                {% if sync_status.vcenter_available %}
+                                    <span class="badge bg-success">
+                                        <i class="mdi mdi-check-circle"></i> Доступен
+                                    </span>
+                                {% else %}
+                                    <span class="badge bg-danger">
+                                        <i class="mdi mdi-close-circle"></i> Недоступен
+                                    </span>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+
+                    {% if sync_status.last_sync %}
+                        <div class="mt-3">
+                            <small class="text-muted">
+                                <i class="mdi mdi-clock-outline"></i>
+                                Последняя синхронизация: {{ sync_status.last_sync|date:"d.m.Y H:i:s" }}
+                            </small>
+                        </div>
+                    {% else %}
+                        <div class="mt-3">
+                            <small class="text-muted">
+                                <i class="mdi mdi-alert"></i>
+                                Синхронизация еще не выполнялась
+                            </small>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Кнопка синхронизации -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">
+                        <i class="mdi mdi-play"></i> Запуск синхронизации
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted">
+                        Будет выполнена синхронизация виртуальных машин из vCenter в NetBox.
+                        Новые VM будут созданы, существующие VM обновлены, а отсутствующие VM помечены как списанные.
+                    </p>
+
+                    {% if sync_status.vcenter_available %}
+                        <form method="post">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-primary btn-lg">
+                                <i class="mdi mdi-sync"></i> Запустить синхронизацию
+                            </button>
+                        </form>
+                    {% else %}
+                        <button class="btn btn-primary btn-lg" disabled>
+                            <i class="mdi mdi-sync"></i> Запустить синхронизацию
+                        </button>
+                        <div class="alert alert-danger mt-3 mb-0">
+                            <i class="mdi mdi-alert"></i>
+                            <strong>Ошибка:</strong> vCenter недоступен. Проверьте настройки подключения.
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Информация -->
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">
+                        <i class="mdi mdi-help-circle"></i> Информация
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <h6>Соответствие статусов VM:</h6>
+                    <ul>
+                        <li><strong>Active (Активна):</strong> VM запущена в vCenter</li>
+                        <li><strong>Offline (Остановлена):</strong> VM остановлена в vCenter</li>
+                        <li><strong>Decommissioning (Списана):</strong> VM была удалена из vCenter</li>
+                    </ul>
+
+                    <h6 class="mt-3">Процесс синхронизации:</h6>
+                    <ol>
+                        <li>Подключается к vCenter и получает список VM</li>
+                        <li>Создает новые VM, найденные в vCenter</li>
+                        <li>Обновляет статус существующих VM</li>
+                        <li>Помечает отсутствующие в vCenter VM как "decommissioning"</li>
+                    </ol>
+
+                    <p class="text-muted mb-0 mt-3">
+                        <i class="mdi mdi-information"></i>
+                        <strong>Примечание:</strong> Для управления отдельными VM используйте стандартный раздел NetBox
+                        <a href="{% url 'virtualization:virtualmachine_list' %}">Виртуальные машины</a>.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

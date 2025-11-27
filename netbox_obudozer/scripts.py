@@ -8,7 +8,7 @@ from extras.scripts import Script
 from django.utils.html import format_html
 
 from .sync import sync_vcenter_vms, get_sync_status
-from .models import VMRecord
+from virtualization.models import VirtualMachine, Cluster
 
 
 class VCenterSyncScript(Script):
@@ -96,26 +96,34 @@ class VCenterSyncScript(Script):
             self.log_info("")
             self.log_info(f"➕ Создано {result.created} новых VM:")
             # Получаем последние созданные VM
-            new_vms = VMRecord.objects.order_by('-created')[:result.created]
+            cluster = Cluster.objects.get(name='vcenter_obu')
+            new_vms = VirtualMachine.objects.filter(
+                cluster=cluster
+            ).order_by('-created')[:result.created]
             for vm in new_vms:
-                state_icon = "▶️" if vm.state == 'running' else "⏹️"
-                self.log_success(f"   {state_icon} {vm.name} ({vm.get_state_display()})")
+                state_icon = "▶️" if vm.status == 'active' else "⏹️"
+                self.log_success(f"   {state_icon} {vm.name} ({vm.get_status_display()})")
         
         # Отображаем обновленные VM
         if result.updated > 0:
             self.log_info("")
             self.log_info(f"✏️  Обновлено {result.updated} VM:")
             # Получаем последние обновленные VM
-            updated_vms = VMRecord.objects.order_by('-last_updated')[:result.updated]
+            updated_vms = VirtualMachine.objects.filter(
+                cluster=cluster
+            ).order_by('-last_updated')[:result.updated]
             for vm in updated_vms:
-                state_icon = "▶️" if vm.state == 'running' else "⏹️"
-                self.log_warning(f"   {state_icon} {vm.name} ({vm.get_state_display()})")
-        
+                state_icon = "▶️" if vm.status == 'active' else "⏹️"
+                self.log_warning(f"   {state_icon} {vm.name} ({vm.get_status_display()})")
+
         # Отображаем отсутствующие VM
         if result.marked_missing > 0:
             self.log_info("")
             self.log_info(f"🚫 Помечено {result.marked_missing} отсутствующих VM:")
-            missing_vms = VMRecord.objects.filter(exist=False)[:result.marked_missing]
+            missing_vms = VirtualMachine.objects.filter(
+                cluster=cluster,
+                status='decommissioning'
+            )[:result.marked_missing]
             for vm in missing_vms:
                 self.log_info(f"   ⚠️  {vm.name} (не найдена в vCenter)")
         

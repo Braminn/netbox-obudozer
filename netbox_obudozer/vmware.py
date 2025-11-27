@@ -39,7 +39,7 @@ def get_vcenter_vms() -> List[Dict]:
     vms = [
         {
             'name': 'vm01',
-            'state': 'running',
+            'state': 'stopped',
             'vcenter_id': 'vm-1001',
         },
         {
