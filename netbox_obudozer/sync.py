@@ -14,6 +14,7 @@ from django.utils import timezone
 from django.contrib.contenttypes.models import ContentType
 from virtualization.models import ClusterType, Cluster, VirtualMachine
 from extras.models import CustomField
+from tqdm import tqdm
 
 from .vmware import get_vcenter_vms, test_vcenter_connection, cluster_info
 
@@ -194,46 +195,48 @@ def apply_changes(diff: VMDiff, result: SyncResult, cluster: Cluster) -> SyncRes
     sync_time = timezone.now()
 
     # Создание новых VM
-    for vm_data in diff.to_create:
-        try:
-            # Конвертация state → status
-            status = 'active' if vm_data['state'] == 'running' else 'offline'
+    if diff.to_create:
+        for vm_data in tqdm(diff.to_create, desc="Creating VMs", unit="VM"):
+            try:
+                # Конвертация state → status
+                status = 'active' if vm_data['state'] == 'running' else 'offline'
 
-            vm = VirtualMachine.objects.create(
-                name=vm_data['name'],
-                cluster=cluster,
-                status=status,
-            )
+                vm = VirtualMachine.objects.create(
+                    name=vm_data['name'],
+                    cluster=cluster,
+                    status=status,
+                )
 
-            # Заполнение Custom Fields
-            vm.custom_field_data = vm.custom_field_data or {}
-            vm.custom_field_data['vcenter_id'] = vm_data.get('vcenter_id')
-            vm.custom_field_data['last_synced'] = sync_time.isoformat()
-            vm.save()
+                # Заполнение Custom Fields
+                vm.custom_field_data = vm.custom_field_data or {}
+                vm.custom_field_data['vcenter_id'] = vm_data.get('vcenter_id')
+                vm.custom_field_data['last_synced'] = sync_time.isoformat()
+                vm.save()
 
-            result.created += 1
-        except Exception as e:
-            result.errors.append(f"Ошибка создания VM '{vm_data['name']}': {str(e)}")
+                result.created += 1
+            except Exception as e:
+                result.errors.append(f"Ошибка создания VM '{vm_data['name']}': {str(e)}")
 
     # Обновление существующих VM
-    for vm, changes in diff.to_update:
-        try:
-            # Применяем изменения
-            for field_name, change in changes.items():
-                if field_name == 'vcenter_id':
-                    vm.custom_field_data = vm.custom_field_data or {}
-                    vm.custom_field_data['vcenter_id'] = change['new']
-                else:
-                    setattr(vm, field_name, change['new'])
+    if diff.to_update:
+        for vm, changes in tqdm(diff.to_update, desc="Updating VMs", unit="VM"):
+            try:
+                # Применяем изменения
+                for field_name, change in changes.items():
+                    if field_name == 'vcenter_id':
+                        vm.custom_field_data = vm.custom_field_data or {}
+                        vm.custom_field_data['vcenter_id'] = change['new']
+                    else:
+                        setattr(vm, field_name, change['new'])
 
-            vm.custom_field_data = vm.custom_field_data or {}
-            vm.custom_field_data['last_synced'] = sync_time.isoformat()
-            vm.save()
-            # NetBox автоматически создаст ObjectChange запись
+                vm.custom_field_data = vm.custom_field_data or {}
+                vm.custom_field_data['last_synced'] = sync_time.isoformat()
+                vm.save()
+                # NetBox автоматически создаст ObjectChange запись
 
-            result.updated += 1
-        except Exception as e:
-            result.errors.append(f"Ошибка обновления VM '{vm.name}': {str(e)}")
+                result.updated += 1
+            except Exception as e:
+                result.errors.append(f"Ошибка обновления VM '{vm.name}': {str(e)}")
 
     # Подсчет неизмененных
     result.unchanged = len(diff.to_skip)
@@ -242,11 +245,13 @@ def apply_changes(diff: VMDiff, result: SyncResult, cluster: Cluster) -> SyncRes
     missing_ids = [vm.id for vm in diff.to_mark_missing]
     if missing_ids:
         try:
+            # Массовое обновление статуса
             VirtualMachine.objects.filter(id__in=missing_ids).update(
                 status='decommissioning'
             )
-            # Обновляем last_synced в Custom Fields
-            for vm in VirtualMachine.objects.filter(id__in=missing_ids):
+            # Обновляем last_synced в Custom Fields с прогресс-баром
+            missing_vms = VirtualMachine.objects.filter(id__in=missing_ids)
+            for vm in tqdm(missing_vms, desc="Marking missing VMs", unit="VM"):
                 vm.custom_field_data = vm.custom_field_data or {}
                 vm.custom_field_data['last_synced'] = sync_time.isoformat()
                 vm.save()
