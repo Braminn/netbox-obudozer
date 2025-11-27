@@ -7,7 +7,7 @@ setup(
     author='Виктор Стеганцев',
     author_email='your.email@example.com',
     license='Apache 2.0',
-    install_requires=[],
+    install_requires=['pyvmomi>=8.0.0.1'],
     packages=find_packages(),
     include_package_data=True,
     zip_safe=False,
