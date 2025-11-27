@@ -58,10 +58,11 @@ class SyncResult:
     
     def __str__(self):
         """Строковое представление результата"""
-        # Гарантируем что duration - это число
+        # Гарантируем что duration - это число и форматируем заранее
         duration_seconds = float(self.duration) if self.duration else 0.0
+        duration_formatted = f"{duration_seconds:.2f}"
         return (
-            f"Синхронизация завершена за {duration_seconds:.2f} сек:\n"
+            f"Синхронизация завершена за {duration_formatted} сек:\n"
             f"  Создано: {self.created}\n"
             f"  Обновлено: {self.updated}\n"
             f"  Без изменений: {self.unchanged}\n"

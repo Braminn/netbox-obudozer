@@ -104,10 +104,12 @@ def sync_vcenter_view(request):
         else:
             # Успешная синхронизация
             duration_seconds = float(result.duration) if result.duration else 0.0
+            # Форматируем число заранее (format_html не поддерживает :f формат)
+            duration_formatted = f"{duration_seconds:.2f}"
             success_msg = format_html(
-                "✅ Синхронизация выполнена успешно за {:.2f} сек.<br>"
+                "✅ Синхронизация выполнена успешно за {} сек.<br>"
                 "Создано: {}, Обновлено: {}, Без изменений: {}, Помечено отсутствующими: {}",
-                duration_seconds,
+                duration_formatted,
                 result.created,
                 result.updated,
                 result.unchanged,

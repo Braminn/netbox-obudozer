@@ -130,7 +130,9 @@ class VCenterSyncScript(Script):
         self.log_info("")
         self.log_info("=" * 70)
         duration_seconds = float(result.duration) if result.duration else 0.0
-        self.log_success(f"✅ Синхронизация завершена за {duration_seconds:.2f} сек")
+        # Форматируем число заранее для безопасности
+        duration_formatted = f"{duration_seconds:.2f}"
+        self.log_success(f"✅ Синхронизация завершена за {duration_formatted} сек")
         self.log_info("=" * 70)
         
         # Итоговая статистика
