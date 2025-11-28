@@ -136,6 +136,20 @@ def get_field_changes(vm: VirtualMachine, vcenter_data: Dict) -> Dict:
             'new': new_cluster
         }
 
+    # Проверяем vcpus
+    if vm.vcpus != vcenter_data.get('vcpus'):
+        changes['vcpus'] = {
+            'old': vm.vcpus,
+            'new': vcenter_data.get('vcpus')
+        }
+
+    # Проверяем memory
+    if vm.memory != vcenter_data.get('memory'):
+        changes['memory'] = {
+            'old': vm.memory,
+            'new': vcenter_data.get('memory')
+        }
+
     # Если VM была помечена как decommissioning, но теперь найдена в vCenter
     if vm.status == 'decommissioning':
         changes['status'] = {
@@ -213,10 +227,8 @@ def sync_vm_disks(vm: VirtualMachine, vcenter_disks: List[Dict]):
         disk_name = disk_data['name']
         vcenter_disk_names.add(disk_name)
 
-        # Формируем описание диска с информацией о типе, provisioning и файле
+        # Формируем описание диска с информацией о provisioning и файле
         description_parts = []
-        if disk_data.get('type'):
-            description_parts.append(f"Type: {disk_data['type']}")
         if 'thin_provisioned' in disk_data:
             provision_type = "Thin" if disk_data['thin_provisioned'] else "Thick"
             description_parts.append(f"Provisioning: {provision_type}")
@@ -284,6 +296,8 @@ def apply_changes(diff: VMDiff, result: SyncResult, cluster: Cluster, vcenter_vm
                     name=vm_data['name'],
                     cluster=cluster,
                     status=status,
+                    vcpus=vm_data.get('vcpus'),
+                    memory=vm_data.get('memory'),
                 )
 
                 # Заполнение Custom Fields

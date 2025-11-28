@@ -200,7 +200,7 @@ def get_vcenter_vms() -> List[Dict]:
         # Определяем нужные свойства для получения
         property_spec = vmodl.query.PropertyCollector.PropertySpec(
             type=vim.VirtualMachine,
-            pathSet=['name', 'runtime.powerState', 'config.instanceUuid', 'config.uuid', 'runtime.host', 'config.hardware.device']
+            pathSet=['name', 'runtime.powerState', 'config.instanceUuid', 'config.uuid', 'runtime.host', 'config.hardware.device', 'config.hardware.numCPU', 'config.hardware.memoryMB']
         )
 
         # Определяем объекты для запроса
@@ -253,6 +253,8 @@ def get_vcenter_vms() -> List[Dict]:
                     'name': props.get('name', 'Unknown'),
                     'state': _map_power_state(props.get('runtime.powerState', 'poweredOff')),
                     'vcenter_id': props.get('config.instanceUuid') or props.get('config.uuid', ''),
+                    'vcpus': props.get('config.hardware.numCPU'),
+                    'memory': props.get('config.hardware.memoryMB'),
                 }
 
                 # Получаем имя кластера vCenter
