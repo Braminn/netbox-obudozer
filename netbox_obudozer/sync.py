@@ -150,10 +150,10 @@ def get_field_changes(vm: VirtualMachine, vcenter_data: Dict) -> Dict:
             'new': vcenter_data.get('memory')
         }
 
-    # Если VM была помечена как decommissioning, но теперь найдена в vCenter
-    if vm.status == 'decommissioning':
+    # Если VM была помечена как failed, но теперь найдена в vCenter
+    if vm.status == 'failed':
         changes['status'] = {
-            'old': 'decommissioning',
+            'old': 'failed',
             'new': vcenter_status
         }
 
@@ -194,7 +194,7 @@ def calculate_diff(vcenter_vms: List[Dict], existing_vms: Dict[str, VirtualMachi
     
     # Находим VM которых нет в vCenter
     for vm_name, vm_record in existing_vms.items():
-        if vm_name not in vcenter_names and vm_record.status != 'decommissioning':
+        if vm_name not in vcenter_names and vm_record.status != 'failed':
             diff.to_mark_missing.append(vm_record)
 
     return diff
@@ -338,13 +338,13 @@ def apply_changes(diff: VMDiff, result: SyncResult, cluster: Cluster, vcenter_vm
     # Подсчет неизмененных
     result.unchanged = len(diff.to_skip)
 
-    # Пометка отсутствующих VM статусом decommissioning
+    # Пометка отсутствующих VM статусом failed
     missing_ids = [vm.id for vm in diff.to_mark_missing]
     if missing_ids:
         try:
             # Массовое обновление статуса
             VirtualMachine.objects.filter(id__in=missing_ids).update(
-                status='decommissioning'
+                status='failed'
             )
             # Обновляем last_synced в Custom Fields с прогресс-баром
             missing_vms = VirtualMachine.objects.filter(id__in=missing_ids)
@@ -509,7 +509,7 @@ def get_sync_status(cluster_name: str = 'vcenter_obu') -> Dict:
             - total_vms: Общее количество VM в кластере
             - active_vms: Количество активных VM (running)
             - offline_vms: Количество остановленных VM (stopped)
-            - decommissioning_vms: Количество удаленных из vCenter VM
+            - failed_vms: Количество отсутствующих в vCenter VM
             - vcenter_available: Доступность vCenter
             - last_sync: Время последней синхронизации
 
@@ -524,7 +524,7 @@ def get_sync_status(cluster_name: str = 'vcenter_obu') -> Dict:
         total_vms = vms.count()
         active_vms = vms.filter(status='active').count()
         offline_vms = vms.filter(status='offline').count()
-        decommissioning_vms = vms.filter(status='decommissioning').count()
+        failed_vms = vms.filter(status='failed').count()
 
         # Получаем время последней синхронизации из Custom Fields
         last_sync = None
@@ -542,7 +542,7 @@ def get_sync_status(cluster_name: str = 'vcenter_obu') -> Dict:
             'total_vms': total_vms,
             'active_vms': active_vms,
             'offline_vms': offline_vms,
-            'decommissioning_vms': decommissioning_vms,
+            'failed_vms': failed_vms,
             'vcenter_available': test_vcenter_connection(),
             'last_sync': last_sync
         }
@@ -551,7 +551,7 @@ def get_sync_status(cluster_name: str = 'vcenter_obu') -> Dict:
             'total_vms': 0,
             'active_vms': 0,
             'offline_vms': 0,
-            'decommissioning_vms': 0,
+            'failed_vms': 0,
             'vcenter_available': test_vcenter_connection(),
             'last_sync': None
         }
