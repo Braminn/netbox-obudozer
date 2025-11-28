@@ -105,13 +105,14 @@ def _extract_disk_info(devices):
             - size_mb (int): Размер диска в мегабайтах
             - type (str): Тип бэкенда диска (например, "FlatVer2")
             - thin_provisioned (bool): Thin provisioning (True) или thick (False)
+            - file_name (str): Путь к файлу диска на datastore (например, "[datastore1] vm/vm.vmdk")
 
     Example:
         >>> disks = _extract_disk_info(vm.config.hardware.device)
         >>> for disk in disks:
-        ...     print(f"{disk['name']}: {disk['size_mb']} MB")
-        Hard disk 1: 51200 MB
-        Hard disk 2: 102400 MB
+        ...     print(f"{disk['name']}: {disk['size_mb']} MB, File: {disk['file_name']}")
+        Hard disk 1: 51200 MB, File: [datastore1] vm01/vm01.vmdk
+        Hard disk 2: 102400 MB, File: [datastore1] vm01/vm01_1.vmdk
     """
     disks = []
 
@@ -129,7 +130,7 @@ def _extract_disk_info(devices):
                         'size_mb': int(device.capacityInKB / 1024) if hasattr(device, 'capacityInKB') else 0,
                     }
 
-                    # Получаем тип бэкенда и thin provisioning
+                    # Получаем тип бэкенда, thin provisioning и путь к файлу
                     if hasattr(device, 'backing'):
                         backing_type = type(device.backing).__name__
                         # Извлекаем короткое имя типа (например, "FlatVer2BackingInfo" -> "FlatVer2")
@@ -138,9 +139,11 @@ def _extract_disk_info(devices):
 
                         disk_info['type'] = backing_type
                         disk_info['thin_provisioned'] = getattr(device.backing, 'thinProvisioned', False)
+                        disk_info['file_name'] = getattr(device.backing, 'fileName', None)
                     else:
                         disk_info['type'] = 'Unknown'
                         disk_info['thin_provisioned'] = False
+                        disk_info['file_name'] = None
 
                     disks.append(disk_info)
 

@@ -213,13 +213,15 @@ def sync_vm_disks(vm: VirtualMachine, vcenter_disks: List[Dict]):
         disk_name = disk_data['name']
         vcenter_disk_names.add(disk_name)
 
-        # Формируем описание диска с информацией о типе и provisioning
+        # Формируем описание диска с информацией о типе, provisioning и файле
         description_parts = []
         if disk_data.get('type'):
             description_parts.append(f"Type: {disk_data['type']}")
         if 'thin_provisioned' in disk_data:
             provision_type = "Thin" if disk_data['thin_provisioned'] else "Thick"
             description_parts.append(f"Provisioning: {provision_type}")
+        if disk_data.get('file_name'):
+            description_parts.append(f"File: {disk_data['file_name']}")
 
         description = ', '.join(description_parts) if description_parts else ''
 
