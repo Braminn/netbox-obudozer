@@ -12,7 +12,7 @@ from typing import Dict, List, Tuple
 from django.db import transaction
 from django.utils import timezone
 from django.contrib.contenttypes.models import ContentType
-from virtualization.models import ClusterType, Cluster, VirtualMachine
+from virtualization.models import ClusterType, Cluster, VirtualMachine, VirtualDisk
 from extras.models import CustomField
 from tqdm import tqdm
 
@@ -182,12 +182,79 @@ def calculate_diff(vcenter_vms: List[Dict], existing_vms: Dict[str, VirtualMachi
     for vm_name, vm_record in existing_vms.items():
         if vm_name not in vcenter_names and vm_record.status != 'decommissioning':
             diff.to_mark_missing.append(vm_record)
-    
+
     return diff
 
 
+def sync_vm_disks(vm: VirtualMachine, vcenter_disks: List[Dict]):
+    """
+    Синхронизирует диски виртуальной машины с данными из vCenter.
+
+    Создает, обновляет или удаляет объекты VirtualDisk в NetBox согласно данным из vCenter.
+
+    Args:
+        vm: Объект VirtualMachine в NetBox
+        vcenter_disks: Список дисков из vCenter (из vm_data['disks'])
+
+    Example:
+        >>> sync_vm_disks(vm, [{'name': 'Hard disk 1', 'size_mb': 51200, 'type': 'FlatVer2', 'thin_provisioned': True}])
+    """
+    if not vcenter_disks:
+        # Если у ВМ нет дисков в vCenter, удаляем все существующие диски в NetBox
+        VirtualDisk.objects.filter(virtual_machine=vm).delete()
+        return
+
+    # Получаем существующие диски из NetBox
+    existing_disks = {disk.name: disk for disk in VirtualDisk.objects.filter(virtual_machine=vm)}
+    vcenter_disk_names = set()
+
+    # Обрабатываем диски из vCenter
+    for disk_data in vcenter_disks:
+        disk_name = disk_data['name']
+        vcenter_disk_names.add(disk_name)
+
+        # Формируем описание диска с информацией о типе и provisioning
+        description_parts = []
+        if disk_data.get('type'):
+            description_parts.append(f"Type: {disk_data['type']}")
+        if 'thin_provisioned' in disk_data:
+            provision_type = "Thin" if disk_data['thin_provisioned'] else "Thick"
+            description_parts.append(f"Provisioning: {provision_type}")
+
+        description = ', '.join(description_parts) if description_parts else ''
+
+        if disk_name in existing_disks:
+            # Диск существует - проверяем и обновляем при необходимости
+            disk = existing_disks[disk_name]
+            updated = False
+
+            if disk.size != disk_data['size_mb']:
+                disk.size = disk_data['size_mb']
+                updated = True
+
+            if disk.description != description:
+                disk.description = description
+                updated = True
+
+            if updated:
+                disk.save()
+        else:
+            # Создаем новый диск
+            VirtualDisk.objects.create(
+                virtual_machine=vm,
+                name=disk_name,
+                size=disk_data['size_mb'],
+                description=description
+            )
+
+    # Удаляем диски, которых больше нет в vCenter
+    for disk_name, disk in existing_disks.items():
+        if disk_name not in vcenter_disk_names:
+            disk.delete()
+
+
 @transaction.atomic
-def apply_changes(diff: VMDiff, result: SyncResult, cluster: Cluster) -> SyncResult:
+def apply_changes(diff: VMDiff, result: SyncResult, cluster: Cluster, vcenter_vms: List[Dict]) -> SyncResult:
     """
     ФАЗА 3: Применяет изменения к базе данных.
 
@@ -197,6 +264,7 @@ def apply_changes(diff: VMDiff, result: SyncResult, cluster: Cluster) -> SyncRes
         diff: Объект с вычисленными различиями
         result: Объект для сохранения результатов
         cluster: Кластер vCenter к которому привязаны VM
+        vcenter_vms: Список VM из vCenter с полными данными
 
     Returns:
         Обновленный SyncResult
@@ -272,6 +340,23 @@ def apply_changes(diff: VMDiff, result: SyncResult, cluster: Cluster) -> SyncRes
             result.marked_missing = len(missing_ids)
         except Exception as e:
             result.errors.append(f"Ошибка пометки отсутствующих VM: {str(e)}")
+
+    # Синхронизация дисков для всех VM из vCenter
+    # Создаем словарь для быстрого поиска VM данных по имени
+    vcenter_vms_dict = {vm_data['name']: vm_data for vm_data in vcenter_vms}
+
+    # Получаем все VM из кластера для синхронизации дисков
+    all_cluster_vms = VirtualMachine.objects.filter(cluster=cluster)
+
+    for vm in tqdm(all_cluster_vms, desc="Syncing VM disks", unit="VM"):
+        try:
+            # Находим данные ВМ из vCenter
+            vm_data = vcenter_vms_dict.get(vm.name)
+            if vm_data:
+                # Синхронизируем диски
+                sync_vm_disks(vm, vm_data.get('disks', []))
+        except Exception as e:
+            result.errors.append(f"Ошибка синхронизации дисков для VM '{vm.name}': {str(e)}")
 
     result.total_processed = len(diff.to_create) + len(diff.to_update) + len(diff.to_skip)
 
@@ -388,7 +473,7 @@ def sync_vcenter_vms() -> SyncResult:
     
     # ФАЗА 3: APPLY - Применение изменений
     try:
-        result = apply_changes(diff, result, cluster)
+        result = apply_changes(diff, result, cluster, vcenter_vms)
     except Exception as e:
         result.errors.append(f"Ошибка применения изменений: {str(e)}")
     

@@ -92,6 +92,68 @@ def _map_power_state(power_state):
         return 'stopped'
 
 
+def _extract_disk_info(devices):
+    """
+    Извлекает информацию о виртуальных дисках из списка устройств ВМ.
+
+    Args:
+        devices: Список устройств vim.vm.device (из config.hardware.device)
+
+    Returns:
+        List[Dict]: Список словарей с данными о дисках:
+            - name (str): Метка диска (например, "Hard disk 1")
+            - size_mb (int): Размер диска в мегабайтах
+            - type (str): Тип бэкенда диска (например, "FlatVer2")
+            - thin_provisioned (bool): Thin provisioning (True) или thick (False)
+
+    Example:
+        >>> disks = _extract_disk_info(vm.config.hardware.device)
+        >>> for disk in disks:
+        ...     print(f"{disk['name']}: {disk['size_mb']} MB")
+        Hard disk 1: 51200 MB
+        Hard disk 2: 102400 MB
+    """
+    disks = []
+
+    if not devices:
+        return disks
+
+    try:
+        for device in devices:
+            # Проверяем, является ли устройство виртуальным диском
+            if type(device).__name__ == 'vim.vm.device.VirtualDisk':
+                try:
+                    # Извлекаем информацию о диске
+                    disk_info = {
+                        'name': device.deviceInfo.label if hasattr(device.deviceInfo, 'label') else 'Unknown',
+                        'size_mb': int(device.capacityInKB / 1024) if hasattr(device, 'capacityInKB') else 0,
+                    }
+
+                    # Получаем тип бэкенда и thin provisioning
+                    if hasattr(device, 'backing'):
+                        backing_type = type(device.backing).__name__
+                        # Извлекаем короткое имя типа (например, "FlatVer2BackingInfo" -> "FlatVer2")
+                        if 'BackingInfo' in backing_type:
+                            backing_type = backing_type.replace('vim.vm.device.VirtualDisk.', '').replace('BackingInfo', '')
+
+                        disk_info['type'] = backing_type
+                        disk_info['thin_provisioned'] = getattr(device.backing, 'thinProvisioned', False)
+                    else:
+                        disk_info['type'] = 'Unknown'
+                        disk_info['thin_provisioned'] = False
+
+                    disks.append(disk_info)
+
+                except Exception as e:
+                    logger.warning(f"Failed to extract disk info for device {device}: {e}")
+                    continue
+
+    except Exception as e:
+        logger.warning(f"Failed to iterate through devices: {e}")
+
+    return disks
+
+
 def get_vcenter_vms() -> List[Dict]:
     """
     Получает список виртуальных машин из VMware vCenter.
@@ -135,7 +197,7 @@ def get_vcenter_vms() -> List[Dict]:
         # Определяем нужные свойства для получения
         property_spec = vmodl.query.PropertyCollector.PropertySpec(
             type=vim.VirtualMachine,
-            pathSet=['name', 'runtime.powerState', 'config.instanceUuid', 'config.uuid', 'runtime.host']
+            pathSet=['name', 'runtime.powerState', 'config.instanceUuid', 'config.uuid', 'runtime.host', 'config.hardware.device']
         )
 
         # Определяем объекты для запроса
@@ -200,6 +262,10 @@ def get_vcenter_vms() -> List[Dict]:
                 except Exception as e:
                     logger.warning(f"Failed to get cluster for VM {vm_data['name']}: {e}")
                     vm_data['vcenter_cluster'] = None
+
+                # Получаем информацию о дисках
+                devices = props.get('config.hardware.device')
+                vm_data['disks'] = _extract_disk_info(devices)
 
                 vms.append(vm_data)
 
