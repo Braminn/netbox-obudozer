@@ -127,6 +127,15 @@ def get_field_changes(vm: VirtualMachine, vcenter_data: Dict) -> Dict:
             'new': new_vcenter_id
         }
 
+    # Проверяем vcenter_cluster через Custom Fields
+    current_cluster = vm.custom_field_data.get('vcenter_cluster') if vm.custom_field_data else None
+    new_cluster = vcenter_data.get('vcenter_cluster')
+    if new_cluster and current_cluster != new_cluster:
+        changes['vcenter_cluster'] = {
+            'old': current_cluster,
+            'new': new_cluster
+        }
+
     # Если VM была помечена как decommissioning, но теперь найдена в vCenter
     if vm.status == 'decommissioning':
         changes['status'] = {
@@ -211,6 +220,7 @@ def apply_changes(diff: VMDiff, result: SyncResult, cluster: Cluster) -> SyncRes
                 vm.custom_field_data = vm.custom_field_data or {}
                 vm.custom_field_data['vcenter_id'] = vm_data.get('vcenter_id')
                 vm.custom_field_data['last_synced'] = sync_time.isoformat()
+                vm.custom_field_data['vcenter_cluster'] = vm_data.get('vcenter_cluster')
                 vm.save()
 
                 result.created += 1
@@ -226,6 +236,9 @@ def apply_changes(diff: VMDiff, result: SyncResult, cluster: Cluster) -> SyncRes
                     if field_name == 'vcenter_id':
                         vm.custom_field_data = vm.custom_field_data or {}
                         vm.custom_field_data['vcenter_id'] = change['new']
+                    elif field_name == 'vcenter_cluster':
+                        vm.custom_field_data = vm.custom_field_data or {}
+                        vm.custom_field_data['vcenter_cluster'] = change['new']
                     else:
                         setattr(vm, field_name, change['new'])
 
@@ -334,9 +347,20 @@ def sync_vcenter_vms() -> SyncResult:
             }
         )
 
+        # Проверяем/создаем Custom Field для имени кластера vCenter
+        vcenter_cluster_field, created = CustomField.objects.get_or_create(
+            name='vcenter_cluster',
+            defaults={
+                'label': 'vCenter Cluster',
+                'type': 'text',
+                'description': 'Имя кластера vCenter, в котором находится ВМ',
+                'required': False,
+            }
+        )
+
         # Привязываем Custom Fields к VirtualMachine
         vm_content_type = ContentType.objects.get_for_model(VirtualMachine)
-        for field in [vcenter_id_field, last_synced_field]:
+        for field in [vcenter_id_field, last_synced_field, vcenter_cluster_field]:
             if vm_content_type not in field.object_types.all():
                 field.object_types.add(vm_content_type)
 

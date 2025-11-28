@@ -135,7 +135,7 @@ def get_vcenter_vms() -> List[Dict]:
         # Определяем нужные свойства для получения
         property_spec = vmodl.query.PropertyCollector.PropertySpec(
             type=vim.VirtualMachine,
-            pathSet=['name', 'runtime.powerState', 'config.instanceUuid', 'config.uuid']
+            pathSet=['name', 'runtime.powerState', 'config.instanceUuid', 'config.uuid', 'runtime.host']
         )
 
         # Определяем объекты для запроса
@@ -189,6 +189,18 @@ def get_vcenter_vms() -> List[Dict]:
                     'state': _map_power_state(props.get('runtime.powerState', 'poweredOff')),
                     'vcenter_id': props.get('config.instanceUuid') or props.get('config.uuid', ''),
                 }
+
+                # Получаем имя кластера vCenter
+                try:
+                    host = props.get('runtime.host')
+                    if host and hasattr(host, 'parent') and hasattr(host.parent, 'name'):
+                        vm_data['vcenter_cluster'] = host.parent.name
+                    else:
+                        vm_data['vcenter_cluster'] = None
+                except Exception as e:
+                    logger.warning(f"Failed to get cluster for VM {vm_data['name']}: {e}")
+                    vm_data['vcenter_cluster'] = None
+
                 vms.append(vm_data)
 
             except Exception as e:
