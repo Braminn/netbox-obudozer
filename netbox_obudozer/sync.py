@@ -12,11 +12,11 @@ from typing import Dict, List, Tuple
 from django.db import transaction
 from django.utils import timezone
 from django.contrib.contenttypes.models import ContentType
-from virtualization.models import ClusterType, Cluster, VirtualMachine, VirtualDisk
+from virtualization.models import ClusterType, Cluster, ClusterGroup, VirtualMachine, VirtualDisk
 from extras.models import CustomField
 from tqdm import tqdm
 
-from .vmware import get_vcenter_vms, test_vcenter_connection, cluster_info
+from .vmware import get_vcenter_vms, test_vcenter_connection, cluster_info, get_cluster_group_name
 
 
 class SyncResult:
@@ -90,19 +90,20 @@ class VMDiff:
         self.to_mark_missing: List[VirtualMachine] = []
 
 
-def get_field_changes(vm: VirtualMachine, vcenter_data: Dict) -> Dict:
+def get_field_changes(vm: VirtualMachine, vcenter_data: Dict, cluster_group_name: str) -> Dict:
     """
     Определяет какие поля изменились.
 
     Args:
         vm: Существующая VirtualMachine в NetBox
         vcenter_data: Новые данные из vCenter
+        cluster_group_name: Имя ClusterGroup (для default кластера)
 
     Returns:
         Dict с измененными полями: {'field_name': {'old': old_value, 'new': new_value}}
 
     Example:
-        >>> changes = get_field_changes(vm, {'state': 'running'})
+        >>> changes = get_field_changes(vm, {'state': 'running'}, 'vcenter.example.com')
         >>> print(changes)
         {'status': {'old': 'offline', 'new': 'active'}}
     """
@@ -128,12 +129,23 @@ def get_field_changes(vm: VirtualMachine, vcenter_data: Dict) -> Dict:
         }
 
     # Проверяем vcenter_cluster через Custom Fields
-    current_cluster = vm.custom_field_data.get('vcenter_cluster') if vm.custom_field_data else None
-    new_cluster = vcenter_data.get('vcenter_cluster')
-    if new_cluster and current_cluster != new_cluster:
+    current_vcenter_cluster = vm.custom_field_data.get('vcenter_cluster') if vm.custom_field_data else None
+    new_vcenter_cluster = vcenter_data.get('vcenter_cluster')
+
+    # Определяем ожидаемое имя кластера
+    expected_cluster_name = new_vcenter_cluster or cluster_group_name
+
+    # Проверяем несоответствие кластера (для миграции из vcenter_obu)
+    if vm.cluster.name != expected_cluster_name:
         changes['vcenter_cluster'] = {
-            'old': current_cluster,
-            'new': new_cluster
+            'old': current_vcenter_cluster,
+            'new': new_vcenter_cluster
+        }
+    # Или изменение в custom field
+    elif new_vcenter_cluster and current_vcenter_cluster != new_vcenter_cluster:
+        changes['vcenter_cluster'] = {
+            'old': current_vcenter_cluster,
+            'new': new_vcenter_cluster
         }
 
     # Проверяем vcpus
@@ -160,30 +172,35 @@ def get_field_changes(vm: VirtualMachine, vcenter_data: Dict) -> Dict:
     return changes
 
 
-def calculate_diff(vcenter_vms: List[Dict], existing_vms: Dict[str, VirtualMachine]) -> VMDiff:
+def calculate_diff(
+    vcenter_vms: List[Dict],
+    existing_vms: Dict[str, VirtualMachine],
+    cluster_group_name: str
+) -> VMDiff:
     """
     ФАЗА 2: Вычисляет различия между vCenter и NetBox.
-    
+
     Args:
         vcenter_vms: Список VM из vCenter
         existing_vms: Словарь существующих VM в NetBox (name -> VMRecord)
-    
+        cluster_group_name: Имя ClusterGroup (для default кластера)
+
     Returns:
         VMDiff объект с информацией о необходимых изменениях
     """
     diff = VMDiff()
     vcenter_names = set()
-    
+
     # Проходим по всем VM из vCenter
     for vm_data in vcenter_vms:
         vm_name = vm_data['name']
         vcenter_names.add(vm_name)
-        
+
         if vm_name in existing_vms:
             # VM существует - проверяем изменения
             vm_record = existing_vms[vm_name]
-            changes = get_field_changes(vm_record, vm_data)
-            
+            changes = get_field_changes(vm_record, vm_data, cluster_group_name)
+
             if changes:
                 diff.to_update.append((vm_record, changes))
             else:
@@ -191,13 +208,46 @@ def calculate_diff(vcenter_vms: List[Dict], existing_vms: Dict[str, VirtualMachi
         else:
             # VM не существует - нужно создать
             diff.to_create.append(vm_data)
-    
+
     # Находим VM которых нет в vCenter
     for vm_name, vm_record in existing_vms.items():
         if vm_name not in vcenter_names and vm_record.status != 'failed':
             diff.to_mark_missing.append(vm_record)
 
     return diff
+
+
+def get_or_create_cluster(
+    cluster_name: str,
+    cluster_type: ClusterType,
+    cluster_group: ClusterGroup
+) -> Cluster:
+    """
+    Получает или создает NetBox Cluster.
+
+    Args:
+        cluster_name: Имя кластера
+        cluster_type: ClusterType объект (vmware)
+        cluster_group: ClusterGroup объект
+
+    Returns:
+        Cluster: Существующий или новый кластер
+    """
+    cluster, created = Cluster.objects.get_or_create(
+        name=cluster_name,
+        defaults={
+            'type': cluster_type,
+            'group': cluster_group,
+            'status': 'active'
+        }
+    )
+
+    # Обновить group если кластер существовал без него
+    if not created and cluster.group != cluster_group:
+        cluster.group = cluster_group
+        cluster.save()
+
+    return cluster
 
 
 def sync_vm_disks(vm: VirtualMachine, vcenter_disks: List[Dict]):
@@ -268,7 +318,14 @@ def sync_vm_disks(vm: VirtualMachine, vcenter_disks: List[Dict]):
 
 
 @transaction.atomic
-def apply_changes(diff: VMDiff, result: SyncResult, cluster: Cluster, vcenter_vms: List[Dict]) -> SyncResult:
+def apply_changes(
+    diff: VMDiff,
+    result: SyncResult,
+    cluster_type: ClusterType,
+    cluster_group: ClusterGroup,
+    cluster_group_name: str,
+    vcenter_vms: List[Dict]
+) -> SyncResult:
     """
     ФАЗА 3: Применяет изменения к базе данных.
 
@@ -277,7 +334,9 @@ def apply_changes(diff: VMDiff, result: SyncResult, cluster: Cluster, vcenter_vm
     Args:
         diff: Объект с вычисленными различиями
         result: Объект для сохранения результатов
-        cluster: Кластер vCenter к которому привязаны VM
+        cluster_type: Тип кластера (vmware)
+        cluster_group: ClusterGroup объект
+        cluster_group_name: Имя ClusterGroup (для default кластера)
         vcenter_vms: Список VM из vCenter с полными данными
 
     Returns:
@@ -292,9 +351,19 @@ def apply_changes(diff: VMDiff, result: SyncResult, cluster: Cluster, vcenter_vm
                 # Конвертация state → status
                 status = 'active' if vm_data['state'] == 'running' else 'offline'
 
+                # Определить имя кластера (или использовать ClusterGroup если не указан)
+                vcenter_cluster_name = vm_data.get('vcenter_cluster') or cluster_group_name
+
+                # Получить или создать кластер "на лету"
+                vm_cluster = get_or_create_cluster(
+                    vcenter_cluster_name,
+                    cluster_type,
+                    cluster_group
+                )
+
                 vm = VirtualMachine.objects.create(
                     name=vm_data['name'],
-                    cluster=cluster,
+                    cluster=vm_cluster,  # Динамический кластер
                     status=status,
                     vcpus=vm_data.get('vcpus'),
                     memory=vm_data.get('memory'),
@@ -323,6 +392,15 @@ def apply_changes(diff: VMDiff, result: SyncResult, cluster: Cluster, vcenter_vm
                     elif field_name == 'vcenter_cluster':
                         vm.custom_field_data = vm.custom_field_data or {}
                         vm.custom_field_data['vcenter_cluster'] = change['new']
+
+                        # Также обновить NetBox cluster
+                        new_vcenter_cluster = change['new'] or cluster_group_name
+                        new_cluster = get_or_create_cluster(
+                            new_vcenter_cluster,
+                            cluster_type,
+                            cluster_group
+                        )
+                        vm.cluster = new_cluster
                     else:
                         setattr(vm, field_name, change['new'])
 
@@ -361,10 +439,10 @@ def apply_changes(diff: VMDiff, result: SyncResult, cluster: Cluster, vcenter_vm
     # Создаем словарь для быстрого поиска VM данных по имени
     vcenter_vms_dict = {vm_data['name']: vm_data for vm_data in vcenter_vms}
 
-    # Получаем все VM из кластера для синхронизации дисков
-    all_cluster_vms = VirtualMachine.objects.filter(cluster=cluster)
+    # Получаем все VM из ClusterGroup для синхронизации дисков
+    all_cluster_group_vms = VirtualMachine.objects.filter(cluster__group=cluster_group)
 
-    for vm in tqdm(all_cluster_vms, desc="Syncing VM disks", unit="VM"):
+    for vm in tqdm(all_cluster_group_vms, desc="Syncing VM disks", unit="VM"):
         try:
             # Находим данные ВМ из vCenter
             vm_data = vcenter_vms_dict.get(vm.name)
@@ -406,23 +484,22 @@ def sync_vcenter_vms() -> SyncResult:
             result.finish()
             return result
 
-        # Проверяем/создаем ClusterType для vCenter
-        cluster_type_name = cluster_info['cluster_type'].capitalize()  # 'vmware' -> 'VMware'
+        # Получаем/создаем ClusterType для vCenter
         cluster_type_slug = cluster_info['cluster_type'].lower()  # 'vmware'
+        cluster_type_name = cluster_info['cluster_type'].capitalize()  # 'VMware'
 
         cluster_type, created = ClusterType.objects.get_or_create(
             slug=cluster_type_slug,
             defaults={'name': cluster_type_name}
         )
 
-        # Проверяем/создаем Cluster для vCenter
-        cluster_name = cluster_info['cluster_name']  # 'vcenter_obu'
-
-        cluster, created = Cluster.objects.get_or_create(
-            name=cluster_name,
+        # Получаем/создаем ClusterGroup из vcenter_host
+        cluster_group_name = get_cluster_group_name()
+        cluster_group, created = ClusterGroup.objects.get_or_create(
+            name=cluster_group_name,
             defaults={
-                'type': cluster_type,
-                'status': 'active'
+                'slug': cluster_group_name.replace('.', '-').replace('_', '-'),
+                'description': f'vCenter clusters from {cluster_group_name}'
             }
         )
 
@@ -468,10 +545,11 @@ def sync_vcenter_vms() -> SyncResult:
         # Получаем VM из vCenter
         vcenter_vms = get_vcenter_vms()
 
-        # Получаем существующие VM из NetBox (только из нашего кластера vCenter)
+        # Получаем ВСЕ существующие VM (из любых кластеров)
+        # Включая старый vcenter_obu - они автоматически переместятся при обновлении
         existing_vms = {
             vm.name: vm
-            for vm in VirtualMachine.objects.filter(cluster=cluster)
+            for vm in VirtualMachine.objects.all()
         }
         
     except Exception as e:
@@ -481,15 +559,22 @@ def sync_vcenter_vms() -> SyncResult:
     
     # ФАЗА 2: DIFF - Вычисление различий
     try:
-        diff = calculate_diff(vcenter_vms, existing_vms)
+        diff = calculate_diff(vcenter_vms, existing_vms, cluster_group_name)
     except Exception as e:
         result.errors.append(f"Ошибка вычисления различий: {str(e)}")
         result.finish()
         return result
-    
+
     # ФАЗА 3: APPLY - Применение изменений
     try:
-        result = apply_changes(diff, result, cluster, vcenter_vms)
+        result = apply_changes(
+            diff,
+            result,
+            cluster_type,
+            cluster_group,
+            cluster_group_name,
+            vcenter_vms
+        )
     except Exception as e:
         result.errors.append(f"Ошибка применения изменений: {str(e)}")
     
@@ -497,34 +582,39 @@ def sync_vcenter_vms() -> SyncResult:
     return result
 
 
-def get_sync_status(cluster_name: str = 'vcenter_obu') -> Dict:
+def get_sync_status(cluster_group_name: str = None) -> Dict:
     """
-    Возвращает текущий статус синхронизации.
+    Возвращает текущий статус синхронизации для ClusterGroup.
 
     Args:
-        cluster_name: Имя кластера vCenter (по умолчанию 'vcenter_obu')
+        cluster_group_name: Имя ClusterGroup (по умолчанию из vcenter_host)
 
     Returns:
         Dict со статистикой:
-            - total_vms: Общее количество VM в кластере
+            - total_vms: Общее количество VM в ClusterGroup
             - active_vms: Количество активных VM (running)
             - offline_vms: Количество остановленных VM (stopped)
             - failed_vms: Количество отсутствующих в vCenter VM
             - vcenter_available: Доступность vCenter
             - last_sync: Время последней синхронизации
+            - cluster_count: Количество кластеров в группе
 
     Example:
         >>> status = get_sync_status()
-        >>> print(f"Всего VM: {status['total_vms']}")
+        >>> print(f"Всего VM: {status['total_vms']}, Кластеров: {status['cluster_count']}")
     """
     try:
-        cluster = Cluster.objects.get(name=cluster_name)
-        vms = VirtualMachine.objects.filter(cluster=cluster)
+        if cluster_group_name is None:
+            cluster_group_name = get_cluster_group_name()
+
+        cluster_group = ClusterGroup.objects.get(name=cluster_group_name)
+        vms = VirtualMachine.objects.filter(cluster__group=cluster_group)
 
         total_vms = vms.count()
         active_vms = vms.filter(status='active').count()
         offline_vms = vms.filter(status='offline').count()
         failed_vms = vms.filter(status='failed').count()
+        cluster_count = Cluster.objects.filter(group=cluster_group).count()
 
         # Получаем время последней синхронизации из Custom Fields
         last_sync = None
@@ -544,14 +634,16 @@ def get_sync_status(cluster_name: str = 'vcenter_obu') -> Dict:
             'offline_vms': offline_vms,
             'failed_vms': failed_vms,
             'vcenter_available': test_vcenter_connection(),
-            'last_sync': last_sync
+            'last_sync': last_sync,
+            'cluster_count': cluster_count,
         }
-    except Cluster.DoesNotExist:
+    except ClusterGroup.DoesNotExist:
         return {
             'total_vms': 0,
             'active_vms': 0,
             'offline_vms': 0,
             'failed_vms': 0,
             'vcenter_available': test_vcenter_connection(),
-            'last_sync': None
+            'last_sync': None,
+            'cluster_count': 0,
         }

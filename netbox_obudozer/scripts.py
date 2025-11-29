@@ -8,7 +8,8 @@ from extras.scripts import Script
 from django.utils.html import format_html
 
 from .sync import sync_vcenter_vms, get_sync_status
-from virtualization.models import VirtualMachine, Cluster
+from .vmware import get_cluster_group_name
+from virtualization.models import VirtualMachine, Cluster, ClusterGroup
 
 
 class VCenterSyncScript(Script):
@@ -47,8 +48,9 @@ class VCenterSyncScript(Script):
         status = get_sync_status()
         self.log_info(f"📊 Текущее состояние:")
         self.log_info(f"   • Всего VM в NetBox: {status['total_vms']}")
-        self.log_info(f"   • Существующих: {status['existing_vms']}")
-        self.log_info(f"   • Отсутствующих: {status['missing_vms']}")
+        self.log_info(f"   • Активных: {status['active_vms']}")
+        self.log_info(f"   • Отсутствующих: {status['failed_vms']}")
+        self.log_info(f"   • Кластеров: {status['cluster_count']}")
         
         if status['last_sync']:
             self.log_info(f"   • Последняя синхронизация: {status['last_sync']}")
@@ -95,10 +97,11 @@ class VCenterSyncScript(Script):
         if result.created > 0:
             self.log_info("")
             self.log_info(f"➕ Создано {result.created} новых VM:")
-            # Получаем последние созданные VM
-            cluster = Cluster.objects.get(name='vcenter_obu')
+            # Получаем последние созданные VM из ClusterGroup
+            cluster_group_name = get_cluster_group_name()
+            cluster_group = ClusterGroup.objects.get(name=cluster_group_name)
             new_vms = VirtualMachine.objects.filter(
-                cluster=cluster
+                cluster__group=cluster_group
             ).order_by('-created')[:result.created]
             for vm in new_vms:
                 state_icon = "▶️" if vm.status == 'active' else "⏹️"
@@ -110,7 +113,7 @@ class VCenterSyncScript(Script):
             self.log_info(f"✏️  Обновлено {result.updated} VM:")
             # Получаем последние обновленные VM
             updated_vms = VirtualMachine.objects.filter(
-                cluster=cluster
+                cluster__group=cluster_group
             ).order_by('-last_updated')[:result.updated]
             for vm in updated_vms:
                 state_icon = "▶️" if vm.status == 'active' else "⏹️"
@@ -121,8 +124,8 @@ class VCenterSyncScript(Script):
             self.log_info("")
             self.log_info(f"🚫 Помечено {result.marked_missing} отсутствующих VM:")
             missing_vms = VirtualMachine.objects.filter(
-                cluster=cluster,
-                status='decommissioning'
+                cluster__group=cluster_group,
+                status='failed'
             )[:result.marked_missing]
             for vm in missing_vms:
                 self.log_info(f"   ⚠️  {vm.name} (не найдена в vCenter)")
@@ -158,8 +161,9 @@ class VCenterSyncScript(Script):
         self.log_info("")
         self.log_info("📊 Финальное состояние:")
         self.log_info(f"   • Всего VM в NetBox: {final_status['total_vms']}")
-        self.log_info(f"   • Существующих: {final_status['existing_vms']}")
-        self.log_info(f"   • Отсутствующих: {final_status['missing_vms']}")
+        self.log_info(f"   • Активных: {final_status['active_vms']}")
+        self.log_info(f"   • Отсутствующих: {final_status['failed_vms']}")
+        self.log_info(f"   • Кластеров: {final_status['cluster_count']}")
         
         self.log_info("")
         self.log_success("🎉 Готово!")

@@ -27,9 +27,25 @@ def get_plugin_config():
     return settings.PLUGINS_CONFIG.get('netbox_obudozer', {})
 
 
-# Имя кластера vCenter для синхронизации
+def get_cluster_group_name():
+    """
+    Получает имя ClusterGroup из конфигурации.
+
+    Returns:
+        str: vcenter_host из PLUGINS_CONFIG
+
+    Raises:
+        ValueError: Если vcenter_host не настроен
+    """
+    config = get_plugin_config()
+    host = config.get('vcenter_host')
+    if not host:
+        raise ValueError("vcenter_host not configured in PLUGINS_CONFIG")
+    return host
+
+
+# Информация о типе кластера vCenter
 cluster_info = {
-    'cluster_name': 'vcenter_obu',
     'cluster_type': 'vmware',
 }
 
