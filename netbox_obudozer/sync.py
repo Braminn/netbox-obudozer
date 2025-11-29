@@ -227,7 +227,7 @@ def get_or_create_cluster(
 
     Args:
         cluster_name: Имя кластера
-        cluster_type: ClusterType объект (vmware)
+        cluster_type: ClusterType объект
         cluster_group: ClusterGroup объект
 
     Returns:
@@ -486,8 +486,8 @@ def sync_vcenter_vms() -> SyncResult:
 
         # Получаем/создаем ClusterType для vCenter
         cluster_type_value = get_cluster_type()
-        cluster_type_slug = cluster_type_value.lower()  # 'vmware'
-        cluster_type_name = cluster_type_value.capitalize()  # 'VMware'
+        cluster_type_slug = cluster_type_value.lower()
+        cluster_type_name = cluster_type_value
 
         cluster_type, created = ClusterType.objects.get_or_create(
             slug=cluster_type_slug,
