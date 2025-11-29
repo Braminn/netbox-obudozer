@@ -32,16 +32,16 @@ def get_cluster_group_name():
     Получает имя ClusterGroup из конфигурации.
 
     Returns:
-        str: vcenter_host из PLUGINS_CONFIG
+        str: vcenter_name из PLUGINS_CONFIG
 
     Raises:
-        ValueError: Если vcenter_host не настроен
+        ValueError: Если vcenter_name не настроен
     """
     config = get_plugin_config()
-    host = config.get('vcenter_host')
-    if not host:
-        raise ValueError("vcenter_host not configured in PLUGINS_CONFIG")
-    return host
+    name = config.get('vcenter_name')
+    if not name:
+        raise ValueError("vcenter_name not configured in PLUGINS_CONFIG")
+    return name
 
 
 # Информация о типе кластера vCenter

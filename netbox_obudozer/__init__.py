@@ -23,6 +23,7 @@ class ObudozerPluginConfig(PluginConfig):
     default_settings = {
         # Настройки подключения к vCenter (будут использоваться при реальной интеграции)
         'vcenter_host': '',
+        'vcenter_name': '',  # Имя для ClusterGroup в NetBox
         'vcenter_user': '',
         'vcenter_password': '',
         'vcenter_verify_ssl': False,

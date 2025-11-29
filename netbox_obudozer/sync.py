@@ -493,13 +493,19 @@ def sync_vcenter_vms() -> SyncResult:
             defaults={'name': cluster_type_name}
         )
 
-        # Получаем/создаем ClusterGroup из vcenter_host
+        # Получаем/создаем ClusterGroup из vcenter_name
         cluster_group_name = get_cluster_group_name()
+
+        # Получаем vcenter_host для описания
+        from .vmware import get_plugin_config
+        config = get_plugin_config()
+        vcenter_host = config.get('vcenter_host', cluster_group_name)
+
         cluster_group, created = ClusterGroup.objects.get_or_create(
             name=cluster_group_name,
             defaults={
                 'slug': cluster_group_name.replace('.', '-').replace('_', '-'),
-                'description': f'vCenter clusters from {cluster_group_name}'
+                'description': f'vCenter clusters from {vcenter_host}'
             }
         )
 
