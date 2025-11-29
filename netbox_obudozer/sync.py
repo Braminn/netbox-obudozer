@@ -16,7 +16,7 @@ from virtualization.models import ClusterType, Cluster, ClusterGroup, VirtualMac
 from extras.models import CustomField
 from tqdm import tqdm
 
-from .vmware import get_vcenter_vms, test_vcenter_connection, cluster_info, get_cluster_group_name
+from .vmware import get_vcenter_vms, test_vcenter_connection, get_cluster_group_name, get_cluster_type
 
 
 class SyncResult:
@@ -485,8 +485,9 @@ def sync_vcenter_vms() -> SyncResult:
             return result
 
         # Получаем/создаем ClusterType для vCenter
-        cluster_type_slug = cluster_info['cluster_type'].lower()  # 'vmware'
-        cluster_type_name = cluster_info['cluster_type'].capitalize()  # 'VMware'
+        cluster_type_value = get_cluster_type()
+        cluster_type_slug = cluster_type_value.lower()  # 'vmware'
+        cluster_type_name = cluster_type_value.capitalize()  # 'VMware'
 
         cluster_type, created = ClusterType.objects.get_or_create(
             slug=cluster_type_slug,

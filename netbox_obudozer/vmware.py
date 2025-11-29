@@ -44,10 +44,20 @@ def get_cluster_group_name():
     return name
 
 
-# Информация о типе кластера vCenter
-cluster_info = {
-    'cluster_type': 'vmware',
-}
+def get_cluster_type():
+    """
+    Получает тип кластера из конфигурации.
+
+    Returns:
+        str: cluster_type из PLUGINS_CONFIG (по умолчанию 'vmware')
+
+    Example:
+        >>> cluster_type = get_cluster_type()
+        >>> print(cluster_type)
+        vmware
+    """
+    config = get_plugin_config()
+    return config.get('cluster_type', 'change_cluster_type')
 
 
 def _connect_vcenter():

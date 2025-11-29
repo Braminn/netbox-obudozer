@@ -28,6 +28,9 @@ class ObudozerPluginConfig(PluginConfig):
         'vcenter_password': '',
         'vcenter_verify_ssl': False,
 
+        # Настройки кластеров
+        'cluster_type': '',  # Тип кластера в NetBox
+
         # Настройки синхронизации
         'sync_enabled': True,
         'auto_sync_interval': 3600,  # секунды (1 час)
