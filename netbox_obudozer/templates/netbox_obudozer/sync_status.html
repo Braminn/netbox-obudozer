@@ -230,10 +230,14 @@
             })
             .then(response => response.json())
             .then(data => {
+                console.log('POST response:', data);
                 if (data.success) {
                     // Показываем контейнер прогресса
                     progressContainer.style.display = 'block';
                     jobIdSpan.textContent = data.job_id;
+
+                    // Обновляем лог с информацией о запуске
+                    jobLog.innerHTML = `<div class="text-info">✓ Задача #${data.job_id} создана, запрашиваю статус...</div>`;
 
                     // Прокручиваем к блоку прогресса
                     progressContainer.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -248,7 +252,7 @@
             })
             .catch(error => {
                 console.error('Ошибка:', error);
-                alert('Ошибка при запуске синхронизации');
+                alert('Ошибка при запуске синхронизации: ' + error.message);
                 syncButton.disabled = false;
                 syncButton.innerHTML = '<i class="mdi mdi-sync"></i> Запустить синхронизацию (фоновая задача)';
             });
@@ -264,8 +268,15 @@
                     'Accept': 'application/json',
                 }
             })
-            .then(response => response.json())
+            .then(response => {
+                console.log('Response status:', response.status);
+                return response.json();
+            })
             .then(data => {
+                console.log('Job data:', data);
+                console.log('Job status:', data.status);
+                console.log('Job data.data:', data.data);
+
                 // Обновляем статус
                 updateStatusBadge(data.status);
 
@@ -289,6 +300,7 @@
             })
             .catch(error => {
                 console.error('Ошибка обновления статуса job:', error);
+                jobLog.innerHTML = `<div class="text-danger">Ошибка получения статуса: ${error.message}</div>`;
             });
         }
 
@@ -325,10 +337,24 @@
     }
 
     function updateLogs(data) {
+        // Проверяем разные возможные структуры логов в NetBox
+        let logs = null;
+
         if (data.data && data.data.log && data.data.log.length > 0) {
+            logs = data.data.log;
+        } else if (data.log_entries && data.log_entries.length > 0) {
+            logs = data.log_entries;
+        } else if (data.data && data.data.output) {
+            // Если есть просто текстовый вывод
+            jobLog.innerHTML = `<pre style="white-space: pre-wrap; margin: 0;">${escapeHtml(data.data.output)}</pre>`;
+            jobLog.scrollTop = jobLog.scrollHeight;
+            return;
+        }
+
+        if (logs && logs.length > 0) {
             let logsHtml = '';
-            data.data.log.forEach(entry => {
-                const time = new Date(entry.created).toLocaleTimeString('ru-RU');
+            logs.forEach(entry => {
+                const time = entry.created ? new Date(entry.created).toLocaleTimeString('ru-RU') : '';
                 const levelMap = {
                     'DEBUG': 'secondary',
                     'INFO': 'info',
@@ -336,13 +362,15 @@
                     'ERROR': 'danger',
                     'CRITICAL': 'danger'
                 };
-                const levelClass = levelMap[entry.level_name] || 'secondary';
+                const levelName = entry.level_name || entry.level || 'INFO';
+                const levelClass = levelMap[levelName] || 'secondary';
+                const message = entry.message || entry.msg || String(entry);
 
                 logsHtml += `
                     <div class="mb-1" style="line-height: 1.6;">
-                        <span class="text-muted">${time}</span>
-                        <span class="badge bg-${levelClass}">${entry.level_name}</span>
-                        <span>${escapeHtml(entry.message)}</span>
+                        ${time ? `<span class="text-muted">${time}</span>` : ''}
+                        <span class="badge bg-${levelClass}">${levelName}</span>
+                        <span>${escapeHtml(message)}</span>
                     </div>
                 `;
             });
@@ -351,9 +379,12 @@
             // Автоскролл вниз
             jobLog.scrollTop = jobLog.scrollHeight;
         } else if (data.status === 'pending') {
-            jobLog.innerHTML = '<div class="text-muted">Задача в очереди...</div>';
-        } else if (data.status === 'running' && (!data.data || !data.data.log || data.data.log.length === 0)) {
-            jobLog.innerHTML = '<div class="text-muted">Выполняется...</div>';
+            jobLog.innerHTML = '<div class="text-muted">Задача в очереди, ожидание запуска...</div>';
+        } else if (data.status === 'running') {
+            jobLog.innerHTML = '<div class="text-info"><i class="mdi mdi-loading mdi-spin"></i> Выполняется, ожидание логов...</div>';
+        } else {
+            // Отладочная информация если логов нет
+            jobLog.innerHTML = `<div class="text-warning">Логи пока не доступны. Статус: ${data.status}<br>Структура data: ${JSON.stringify(data.data || {}, null, 2)}</div>`;
         }
     }
 
