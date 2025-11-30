@@ -118,6 +118,36 @@ def _map_power_state(power_state):
         return 'stopped'
 
 
+def _extract_extraconfig_value(extra_config, key):
+    """
+    Извлекает значение из config.extraConfig по ключу.
+
+    Args:
+        extra_config: Список объектов config.extraConfig
+        key: Ключ для поиска (например, 'guestinfo.vmtools.description')
+
+    Returns:
+        str или None: Значение найденного ключа или None
+
+    Example:
+        >>> description = _extract_extraconfig_value(vm.config.extraConfig, 'guestinfo.vmtools.description')
+        >>> print(description)
+        open-vm-tools 11.3.0 build 18090558
+    """
+    if not extra_config:
+        return None
+
+    try:
+        # Используем генератор для поиска значения по ключу
+        return next(
+            (opt.value for opt in extra_config if getattr(opt, 'key', None) == key),
+            None
+        )
+    except Exception as e:
+        logger.warning(f"Failed to extract extraConfig value for key '{key}': {e}")
+        return None
+
+
 def _extract_disk_info(devices):
     """
     Извлекает информацию о виртуальных дисках из списка устройств ВМ.
@@ -226,7 +256,7 @@ def get_vcenter_vms() -> List[Dict]:
         # Определяем нужные свойства для получения
         property_spec = vmodl.query.PropertyCollector.PropertySpec(
             type=vim.VirtualMachine,
-            pathSet=['name', 'runtime.powerState', 'config.instanceUuid', 'config.uuid', 'runtime.host', 'config.hardware.device', 'config.hardware.numCPU', 'config.hardware.memoryMB', 'guest.ipAddress']
+            pathSet=['name', 'runtime.powerState', 'config.instanceUuid', 'config.uuid', 'runtime.host', 'config.hardware.device', 'config.hardware.numCPU', 'config.hardware.memoryMB', 'guest.ipAddress', 'guest.toolsStatus', 'config.extraConfig']
         )
 
         # Определяем объекты для запроса
@@ -298,6 +328,14 @@ def get_vcenter_vms() -> List[Dict]:
                 # Получаем информацию о дисках
                 devices = props.get('config.hardware.device')
                 vm_data['disks'] = _extract_disk_info(devices)
+
+                # Получаем информацию о VMware Tools
+                vm_data['tools_status'] = props.get('guest.toolsStatus')
+
+                # Извлекаем данные из config.extraConfig
+                extra_config = props.get('config.extraConfig')
+                vm_data['vmtools_description'] = _extract_extraconfig_value(extra_config, 'guestinfo.vmtools.description')
+                vm_data['vmtools_version_number'] = _extract_extraconfig_value(extra_config, 'guestinfo.vmtools.versionNumber')
 
                 vms.append(vm_data)
 

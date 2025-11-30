@@ -171,6 +171,36 @@ def get_field_changes(vm: VirtualMachine, vcenter_data: Dict, cluster_group_name
             'new': new_ip
         }
 
+    # Проверяем tools_status через Custom Fields
+    current_tools_status = vm.custom_field_data.get('tools_status') if vm.custom_field_data else None
+    new_tools_status = vcenter_data.get('tools_status')
+
+    if current_tools_status != new_tools_status:
+        changes['tools_status'] = {
+            'old': current_tools_status,
+            'new': new_tools_status
+        }
+
+    # Проверяем vmtools_description через Custom Fields
+    current_vmtools_desc = vm.custom_field_data.get('vmtools_description') if vm.custom_field_data else None
+    new_vmtools_desc = vcenter_data.get('vmtools_description')
+
+    if current_vmtools_desc != new_vmtools_desc:
+        changes['vmtools_description'] = {
+            'old': current_vmtools_desc,
+            'new': new_vmtools_desc
+        }
+
+    # Проверяем vmtools_version_number через Custom Fields
+    current_vmtools_ver = vm.custom_field_data.get('vmtools_version_number') if vm.custom_field_data else None
+    new_vmtools_ver = vcenter_data.get('vmtools_version_number')
+
+    if current_vmtools_ver != new_vmtools_ver:
+        changes['vmtools_version_number'] = {
+            'old': current_vmtools_ver,
+            'new': new_vmtools_ver
+        }
+
     # Если VM была помечена как failed, но теперь найдена в vCenter
     if vm.status == 'failed':
         changes['status'] = {
@@ -389,6 +419,9 @@ def apply_changes(
                 vm.custom_field_data['last_synced'] = sync_time.isoformat()
                 vm.custom_field_data['vcenter_cluster'] = vm_data.get('vcenter_cluster')
                 vm.custom_field_data['ip_address'] = vm_data.get('ip_address')
+                vm.custom_field_data['tools_status'] = vm_data.get('tools_status')
+                vm.custom_field_data['vmtools_description'] = vm_data.get('vmtools_description')
+                vm.custom_field_data['vmtools_version_number'] = vm_data.get('vmtools_version_number')
                 vm.save()
 
                 result.created += 1
@@ -432,6 +465,15 @@ def apply_changes(
                     elif field_name == 'ip_address':
                         vm.custom_field_data = vm.custom_field_data or {}
                         vm.custom_field_data['ip_address'] = change['new']
+                    elif field_name == 'tools_status':
+                        vm.custom_field_data = vm.custom_field_data or {}
+                        vm.custom_field_data['tools_status'] = change['new']
+                    elif field_name == 'vmtools_description':
+                        vm.custom_field_data = vm.custom_field_data or {}
+                        vm.custom_field_data['vmtools_description'] = change['new']
+                    elif field_name == 'vmtools_version_number':
+                        vm.custom_field_data = vm.custom_field_data or {}
+                        vm.custom_field_data['vmtools_version_number'] = change['new']
                     else:
                         setattr(vm, field_name, change['new'])
 
@@ -650,9 +692,40 @@ def sync_vcenter_vms(logger=None) -> SyncResult:
             }
         )
 
+        tools_status_field, created = CustomField.objects.get_or_create(
+            name='tools_status',
+            defaults={
+                'label': 'VMware Tools Status',
+                'type': 'text',
+                'description': 'VMware Tools status from guest.toolsStatus',
+                'required': False,
+            }
+        )
+
+        vmtools_description_field, created = CustomField.objects.get_or_create(
+            name='vmtools_description',
+            defaults={
+                'label': 'VMware Tools Description',
+                'type': 'text',
+                'description': 'VMware Tools description from guestinfo.vmtools.description',
+                'required': False,
+            }
+        )
+
+        vmtools_version_number_field, created = CustomField.objects.get_or_create(
+            name='vmtools_version_number',
+            defaults={
+                'label': 'VMware Tools Version Number',
+                'type': 'text',
+                'description': 'VMware Tools version number from guestinfo.vmtools.versionNumber',
+                'required': False,
+            }
+        )
+
         # Привязываем Custom Fields к VirtualMachine
         vm_content_type = ContentType.objects.get_for_model(VirtualMachine)
-        for field in [vcenter_id_field, last_synced_field, vcenter_cluster_field, ip_address_field]:
+        for field in [vcenter_id_field, last_synced_field, vcenter_cluster_field, ip_address_field,
+                      tools_status_field, vmtools_description_field, vmtools_version_number_field]:
             if vm_content_type not in field.object_types.all():
                 field.object_types.add(vm_content_type)
 
