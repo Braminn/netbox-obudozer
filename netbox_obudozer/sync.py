@@ -14,7 +14,6 @@ from django.utils import timezone
 from django.contrib.contenttypes.models import ContentType
 from virtualization.models import ClusterType, Cluster, ClusterGroup, VirtualMachine, VirtualDisk
 from extras.models import CustomField
-from tqdm import tqdm
 
 from .vmware import get_vcenter_vms, test_vcenter_connection, get_cluster_group_name, get_cluster_type
 
@@ -324,7 +323,8 @@ def apply_changes(
     cluster_type: ClusterType,
     cluster_group: ClusterGroup,
     cluster_group_name: str,
-    vcenter_vms: List[Dict]
+    vcenter_vms: List[Dict],
+    logger=None
 ) -> SyncResult:
     """
     ФАЗА 3: Применяет изменения к базе данных.
@@ -338,6 +338,7 @@ def apply_changes(
         cluster_group: ClusterGroup объект
         cluster_group_name: Имя ClusterGroup (для default кластера)
         vcenter_vms: Список VM из vCenter с полными данными
+        logger: Опциональный logger для фоновых задач (JobRunner.logger)
 
     Returns:
         Обновленный SyncResult
@@ -346,7 +347,10 @@ def apply_changes(
 
     # Создание новых VM
     if diff.to_create:
-        for vm_data in tqdm(diff.to_create, desc="Creating VMs", unit="VM"):
+        if logger:
+            logger.info(f"  → Создание {len(diff.to_create)} новых VM...")
+
+        for idx, vm_data in enumerate(diff.to_create, 1):
             try:
                 # Конвертация state → status
                 status = 'active' if vm_data['state'] == 'running' else 'offline'
@@ -377,12 +381,25 @@ def apply_changes(
                 vm.save()
 
                 result.created += 1
+
+                # Логируем каждую 10-ую VM или последнюю
+                if logger and (idx % 10 == 0 or idx == len(diff.to_create)):
+                    logger.info(f"    ✓ Создано {idx}/{len(diff.to_create)} VM")
+
             except Exception as e:
                 result.errors.append(f"Ошибка создания VM '{vm_data['name']}': {str(e)}")
+                if logger:
+                    logger.error(f"    ✗ Ошибка создания '{vm_data['name']}'")
+
+        if logger:
+            logger.info(f"  ✓ Создано VM: {result.created}")
 
     # Обновление существующих VM
     if diff.to_update:
-        for vm, changes in tqdm(diff.to_update, desc="Updating VMs", unit="VM"):
+        if logger:
+            logger.info(f"  → Обновление {len(diff.to_update)} существующих VM...")
+
+        for idx, (vm, changes) in enumerate(diff.to_update, 1):
             try:
                 # Применяем изменения
                 for field_name, change in changes.items():
@@ -410,30 +427,55 @@ def apply_changes(
                 # NetBox автоматически создаст ObjectChange запись
 
                 result.updated += 1
+
+                # Логируем каждую 10-ую VM или последнюю
+                if logger and (idx % 10 == 0 or idx == len(diff.to_update)):
+                    logger.info(f"    ✓ Обновлено {idx}/{len(diff.to_update)} VM")
+
             except Exception as e:
                 result.errors.append(f"Ошибка обновления VM '{vm.name}': {str(e)}")
+                if logger:
+                    logger.error(f"    ✗ Ошибка обновления '{vm.name}'")
+
+        if logger:
+            logger.info(f"  ✓ Обновлено VM: {result.updated}")
 
     # Подсчет неизмененных
     result.unchanged = len(diff.to_skip)
+    if logger and result.unchanged > 0:
+        logger.info(f"  → Без изменений: {result.unchanged} VM")
 
     # Пометка отсутствующих VM статусом failed
     missing_ids = [vm.id for vm in diff.to_mark_missing]
     if missing_ids:
+        if logger:
+            logger.info(f"  → Пометка {len(missing_ids)} VM как недоступных...")
+
         try:
             # Массовое обновление статуса
             VirtualMachine.objects.filter(id__in=missing_ids).update(
                 status='failed'
             )
-            # Обновляем last_synced в Custom Fields с прогресс-баром
+            # Обновляем last_synced в Custom Fields
             missing_vms = VirtualMachine.objects.filter(id__in=missing_ids)
-            for vm in tqdm(missing_vms, desc="Marking missing VMs", unit="VM"):
+            for idx, vm in enumerate(missing_vms, 1):
                 vm.custom_field_data = vm.custom_field_data or {}
                 vm.custom_field_data['last_synced'] = sync_time.isoformat()
                 vm.save()
 
+                # Логируем каждую 10-ую VM или последнюю
+                if logger and (idx % 10 == 0 or idx == len(missing_ids)):
+                    logger.info(f"    ✓ Помечено {idx}/{len(missing_ids)} VM")
+
             result.marked_missing = len(missing_ids)
+
+            if logger:
+                logger.info(f"  ✓ Помечено недоступными: {result.marked_missing}")
+
         except Exception as e:
             result.errors.append(f"Ошибка пометки отсутствующих VM: {str(e)}")
+            if logger:
+                logger.error(f"  ✗ Ошибка пометки отсутствующих VM")
 
     # Синхронизация дисков для всех VM из vCenter
     # Создаем словарь для быстрого поиска VM данных по имени
@@ -442,49 +484,80 @@ def apply_changes(
     # Получаем все VM из ClusterGroup для синхронизации дисков
     all_cluster_group_vms = VirtualMachine.objects.filter(cluster__group=cluster_group)
 
-    for vm in tqdm(all_cluster_group_vms, desc="Syncing VM disks", unit="VM"):
-        try:
-            # Находим данные ВМ из vCenter
-            vm_data = vcenter_vms_dict.get(vm.name)
-            if vm_data:
-                # Синхронизируем диски
-                sync_vm_disks(vm, vm_data.get('disks', []))
-        except Exception as e:
-            result.errors.append(f"Ошибка синхронизации дисков для VM '{vm.name}': {str(e)}")
+    total_vms = all_cluster_group_vms.count()
+    if total_vms > 0:
+        if logger:
+            logger.info(f"  → Синхронизация дисков для {total_vms} VM...")
+
+        for idx, vm in enumerate(all_cluster_group_vms, 1):
+            try:
+                # Находим данные ВМ из vCenter
+                vm_data = vcenter_vms_dict.get(vm.name)
+                if vm_data:
+                    # Синхронизируем диски
+                    sync_vm_disks(vm, vm_data.get('disks', []))
+
+                # Логируем каждую 10-ую VM или последнюю
+                if logger and (idx % 10 == 0 or idx == total_vms):
+                    logger.info(f"    ✓ Синхронизировано {idx}/{total_vms} VM")
+
+            except Exception as e:
+                result.errors.append(f"Ошибка синхронизации дисков для VM '{vm.name}': {str(e)}")
+                if logger:
+                    logger.error(f"    ✗ Ошибка синхронизации дисков '{vm.name}'")
+
+        if logger:
+            logger.info(f"  ✓ Синхронизация дисков завершена")
 
     result.total_processed = len(diff.to_create) + len(diff.to_update) + len(diff.to_skip)
 
     return result
 
 
-def sync_vcenter_vms() -> SyncResult:
+def sync_vcenter_vms(logger=None) -> SyncResult:
     """
     Основная функция синхронизации VM из vCenter с NetBox.
-    
+
     Реализует 3-фазный подход:
     1. Preparation - получение данных
-    2. Diff - вычисление различий  
+    2. Diff - вычисление различий
     3. Apply - применение изменений
-    
+
+    Args:
+        logger: Опциональный logger для фоновых задач (JobRunner.logger)
+
     Returns:
         SyncResult с результатами синхронизации
-    
+
     Example:
         >>> result = sync_vcenter_vms()
         >>> print(f"Создано: {result.created}, Обновлено: {result.updated}")
     """
     result = SyncResult()
     result.start()
-    
+
     # ФАЗА 1: PREPARATION - Получение данных
+    if logger:
+        logger.info("📋 ФАЗА 1: Подготовка данных")
+
     try:
+        if logger:
+            logger.info("  → Проверка подключения к vCenter...")
         # Проверяем подключение к vCenter
         if not test_vcenter_connection():
             result.errors.append("Не удалось подключиться к vCenter")
+            if logger:
+                logger.error("  ❌ vCenter недоступен")
             result.finish()
             return result
 
+        if logger:
+            logger.info("  ✓ vCenter доступен")
+
         # Получаем/создаем ClusterType для vCenter
+        if logger:
+            logger.info("  → Проверка ClusterType...")
+
         cluster_type_value = get_cluster_type()
         cluster_type_slug = cluster_type_value.lower()
         cluster_type_name = cluster_type_value
@@ -494,7 +567,13 @@ def sync_vcenter_vms() -> SyncResult:
             defaults={'name': cluster_type_name}
         )
 
+        if logger:
+            logger.info(f"  ✓ ClusterType: {cluster_type.name}")
+
         # Получаем/создаем ClusterGroup из vcenter_name
+        if logger:
+            logger.info("  → Проверка ClusterGroup...")
+
         cluster_group_name = get_cluster_group_name()
 
         # Получаем vcenter_host для описания
@@ -510,7 +589,13 @@ def sync_vcenter_vms() -> SyncResult:
             }
         )
 
-        # Проверяем/создаем Custom Field для vCenter ID
+        if logger:
+            logger.info(f"  ✓ ClusterGroup: {cluster_group.name}")
+
+        # Проверяем/создаем Custom Fields
+        if logger:
+            logger.info("  → Проверка Custom Fields...")
+
         vcenter_id_field, created = CustomField.objects.get_or_create(
             name='vcenter_id',
             defaults={
@@ -521,7 +606,6 @@ def sync_vcenter_vms() -> SyncResult:
             }
         )
 
-        # Проверяем/создаем Custom Field для времени синхронизации
         last_synced_field, created = CustomField.objects.get_or_create(
             name='last_synced',
             defaults={
@@ -532,7 +616,6 @@ def sync_vcenter_vms() -> SyncResult:
             }
         )
 
-        # Проверяем/создаем Custom Field для имени кластера vCenter
         vcenter_cluster_field, created = CustomField.objects.get_or_create(
             name='vcenter_cluster',
             defaults={
@@ -549,30 +632,64 @@ def sync_vcenter_vms() -> SyncResult:
             if vm_content_type not in field.object_types.all():
                 field.object_types.add(vm_content_type)
 
+        if logger:
+            logger.info("  ✓ Custom Fields готовы")
+
         # Получаем VM из vCenter
+        if logger:
+            logger.info("  → Получение VM из vCenter...")
+
         vcenter_vms = get_vcenter_vms()
+
+        if logger:
+            logger.info(f"  ✓ Получено {len(vcenter_vms)} VM из vCenter")
 
         # Получаем ВСЕ существующие VM (из любых кластеров)
         # Включая старый vcenter_obu - они автоматически переместятся при обновлении
+        if logger:
+            logger.info("  → Запрос существующих VM из NetBox...")
+
         existing_vms = {
             vm.name: vm
             for vm in VirtualMachine.objects.all()
         }
+
+        if logger:
+            logger.info(f"  ✓ Найдено {len(existing_vms)} VM в NetBox")
         
     except Exception as e:
         result.errors.append(f"Ошибка получения данных: {str(e)}")
+        if logger:
+            logger.error(f"  ❌ {str(e)}")
         result.finish()
         return result
-    
+
     # ФАЗА 2: DIFF - Вычисление различий
+    if logger:
+        logger.info("")
+        logger.info("🔍 ФАЗА 2: Анализ различий")
+
     try:
         diff = calculate_diff(vcenter_vms, existing_vms, cluster_group_name)
+
+        if logger:
+            logger.info(f"  → Создать: {len(diff.to_create)} VM")
+            logger.info(f"  → Обновить: {len(diff.to_update)} VM")
+            logger.info(f"  → Без изменений: {len(diff.to_skip)} VM")
+            logger.info(f"  → Пометить недоступными: {len(diff.to_mark_missing)} VM")
+
     except Exception as e:
         result.errors.append(f"Ошибка вычисления различий: {str(e)}")
+        if logger:
+            logger.error(f"  ❌ {str(e)}")
         result.finish()
         return result
 
     # ФАЗА 3: APPLY - Применение изменений
+    if logger:
+        logger.info("")
+        logger.info("💾 ФАЗА 3: Применение изменений")
+
     try:
         result = apply_changes(
             diff,
@@ -580,10 +697,13 @@ def sync_vcenter_vms() -> SyncResult:
             cluster_type,
             cluster_group,
             cluster_group_name,
-            vcenter_vms
+            vcenter_vms,
+            logger=logger
         )
     except Exception as e:
         result.errors.append(f"Ошибка применения изменений: {str(e)}")
+        if logger:
+            logger.error(f"  ❌ {str(e)}")
     
     result.finish()
     return result

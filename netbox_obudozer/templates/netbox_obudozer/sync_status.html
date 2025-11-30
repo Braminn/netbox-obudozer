@@ -95,7 +95,8 @@
                 </div>
                 <div class="card-body">
                     <p class="text-muted">
-                        Будет выполнена синхронизация виртуальных машин из vCenter в NetBox.
+                        Будет запущена фоновая задача синхронизации виртуальных машин из vCenter в NetBox.
+                        После нажатия кнопки вы будете перенаправлены на страницу отслеживания прогресса.
                         Новые VM будут созданы, существующие VM обновлены, а отсутствующие VM помечены как недоступные (failed).
                     </p>
 
@@ -103,7 +104,7 @@
                         <form method="post">
                             {% csrf_token %}
                             <button type="submit" class="btn btn-primary btn-lg">
-                                <i class="mdi mdi-sync"></i> Запустить синхронизацию
+                                <i class="mdi mdi-sync"></i> Запустить синхронизацию (фоновая задача)
                             </button>
                         </form>
                     {% else %}

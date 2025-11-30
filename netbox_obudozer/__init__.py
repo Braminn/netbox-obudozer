@@ -37,5 +37,15 @@ class ObudozerPluginConfig(PluginConfig):
     }
     min_version = '4.4.0'
 
+    def ready(self):
+        """
+        Вызывается при инициализации плагина.
+
+        Импортирует jobs.py для регистрации фоновых задач.
+        """
+        super().ready()
+        # Импортируем jobs для регистрации JobRunner
+        from . import jobs  # noqa: F401
+
 
 config = ObudozerPluginConfig
