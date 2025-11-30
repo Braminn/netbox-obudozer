@@ -161,6 +161,16 @@ def get_field_changes(vm: VirtualMachine, vcenter_data: Dict, cluster_group_name
             'new': vcenter_data.get('memory')
         }
 
+    # Проверяем ip_address через Custom Fields
+    current_ip = vm.custom_field_data.get('ip_address') if vm.custom_field_data else None
+    new_ip = vcenter_data.get('ip_address')
+
+    if current_ip != new_ip:
+        changes['ip_address'] = {
+            'old': current_ip,
+            'new': new_ip
+        }
+
     # Если VM была помечена как failed, но теперь найдена в vCenter
     if vm.status == 'failed':
         changes['status'] = {
@@ -378,6 +388,7 @@ def apply_changes(
                 vm.custom_field_data['vcenter_id'] = vm_data.get('vcenter_id')
                 vm.custom_field_data['last_synced'] = sync_time.isoformat()
                 vm.custom_field_data['vcenter_cluster'] = vm_data.get('vcenter_cluster')
+                vm.custom_field_data['ip_address'] = vm_data.get('ip_address')
                 vm.save()
 
                 result.created += 1
@@ -418,6 +429,9 @@ def apply_changes(
                             cluster_group
                         )
                         vm.cluster = new_cluster
+                    elif field_name == 'ip_address':
+                        vm.custom_field_data = vm.custom_field_data or {}
+                        vm.custom_field_data['ip_address'] = change['new']
                     else:
                         setattr(vm, field_name, change['new'])
 
@@ -626,9 +640,19 @@ def sync_vcenter_vms(logger=None) -> SyncResult:
             }
         )
 
+        ip_address_field, created = CustomField.objects.get_or_create(
+            name='ip_address',
+            defaults={
+                'label': 'IP Address',
+                'type': 'text',
+                'description': 'Primary IP address from vCenter (guest.ipAddress)',
+                'required': False,
+            }
+        )
+
         # Привязываем Custom Fields к VirtualMachine
         vm_content_type = ContentType.objects.get_for_model(VirtualMachine)
-        for field in [vcenter_id_field, last_synced_field, vcenter_cluster_field]:
+        for field in [vcenter_id_field, last_synced_field, vcenter_cluster_field, ip_address_field]:
             if vm_content_type not in field.object_types.all():
                 field.object_types.add(vm_content_type)
 
