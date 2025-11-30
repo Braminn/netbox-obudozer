@@ -813,7 +813,7 @@ def sync_vcenter_vms(logger=None) -> SyncResult:
             name='creation_date',
             defaults={
                 'label': 'Creation Date',
-                'type': 'date',
+                'type': 'datetime',
                 'description': 'VM creation date from config.createDate',
                 'required': False,
             }

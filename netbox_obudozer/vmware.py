@@ -406,10 +406,8 @@ def get_vcenter_vms() -> List[Dict]:
                 vm_data['os_kernel_version'] = os_info['kernelVersion']
                 vm_data['os_bitness'] = os_info['bitness']
 
-                # Получаем дату создания VM
-                create_date = props.get('config.createDate')
-                # Преобразуем в ISO формат для хранения в NetBox
-                vm_data['creation_date'] = create_date.isoformat() if create_date else None
+                # Получаем дату создания VM (сохраняем как есть без преобразования)
+                vm_data['creation_date'] = props.get('config.createDate')
 
                 vms.append(vm_data)
 
