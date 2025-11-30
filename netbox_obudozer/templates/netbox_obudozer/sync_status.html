@@ -96,14 +96,14 @@
                 <div class="card-body">
                     <p class="text-muted">
                         Будет запущена фоновая задача синхронизации виртуальных машин из vCenter в NetBox.
-                        После нажатия кнопки вы будете перенаправлены на страницу отслеживания прогресса.
+                        Прогресс выполнения будет отображаться ниже в реальном времени.
                         Новые VM будут созданы, существующие VM обновлены, а отсутствующие VM помечены как недоступные (failed).
                     </p>
 
                     {% if sync_status.vcenter_available %}
-                        <form method="post">
+                        <form id="sync-form" method="post">
                             {% csrf_token %}
-                            <button type="submit" class="btn btn-primary btn-lg">
+                            <button type="submit" class="btn btn-primary btn-lg" id="sync-button">
                                 <i class="mdi mdi-sync"></i> Запустить синхронизацию (фоновая задача)
                             </button>
                         </form>
@@ -116,6 +116,42 @@
                             <strong>Ошибка:</strong> vCenter недоступен. Проверьте настройки подключения.
                         </div>
                     {% endif %}
+
+                    <!-- Блок отображения прогресса синхронизации -->
+                    <div id="sync-progress-container" class="mt-4" style="display: none;">
+                        <hr>
+                        <h5 class="mb-3">
+                            <i class="mdi mdi-progress-clock"></i> Прогресс синхронизации (Job #<span id="job-id"></span>)
+                        </h5>
+
+                        <!-- Статус -->
+                        <div class="mb-3">
+                            <strong>Статус:</strong>
+                            <span id="job-status-badge"></span>
+                        </div>
+
+                        <!-- Прогресс-бар -->
+                        <div class="progress mb-3" style="height: 25px;" id="progress-bar-container">
+                            <div class="progress-bar progress-bar-striped progress-bar-animated bg-primary"
+                                 role="progressbar"
+                                 style="width: 100%"
+                                 id="progress-bar">
+                                <span id="progress-text">Выполняется...</span>
+                            </div>
+                        </div>
+
+                        <!-- Логи -->
+                        <div class="card">
+                            <div class="card-header">
+                                <strong><i class="mdi mdi-text"></i> Лог выполнения</strong>
+                            </div>
+                            <div class="card-body p-0">
+                                <div id="job-log" style="max-height: 400px; overflow-y: auto; background: #f8f9fa; padding: 15px; font-family: 'Courier New', monospace; font-size: 13px;">
+                                    <div class="text-muted">Ожидание запуска...</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -156,4 +192,251 @@
         </div>
     </div>
 </div>
+
+<script>
+(function() {
+    const syncForm = document.getElementById('sync-form');
+    const syncButton = document.getElementById('sync-button');
+    const progressContainer = document.getElementById('sync-progress-container');
+    const jobIdSpan = document.getElementById('job-id');
+    const jobStatusBadge = document.getElementById('job-status-badge');
+    const progressBar = document.getElementById('progress-bar');
+    const progressText = document.getElementById('progress-text');
+    const jobLog = document.getElementById('job-log');
+
+    let updateInterval;
+    let lastStatus = null;
+
+    if (syncForm) {
+        syncForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+
+            // Отключаем кнопку
+            syncButton.disabled = true;
+            syncButton.innerHTML = '<i class="mdi mdi-loading mdi-spin"></i> Запуск...';
+
+            // Получаем CSRF token
+            const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+
+            // Отправляем AJAX запрос
+            fetch(window.location.href, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'X-CSRFToken': csrfToken,
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                body: new URLSearchParams(new FormData(syncForm))
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Показываем контейнер прогресса
+                    progressContainer.style.display = 'block';
+                    jobIdSpan.textContent = data.job_id;
+
+                    // Прокручиваем к блоку прогресса
+                    progressContainer.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+                    // Запускаем polling
+                    startJobPolling(data.job_id);
+                } else {
+                    alert('Ошибка: ' + (data.error || 'Неизвестная ошибка'));
+                    syncButton.disabled = false;
+                    syncButton.innerHTML = '<i class="mdi mdi-sync"></i> Запустить синхронизацию (фоновая задача)';
+                }
+            })
+            .catch(error => {
+                console.error('Ошибка:', error);
+                alert('Ошибка при запуске синхронизации');
+                syncButton.disabled = false;
+                syncButton.innerHTML = '<i class="mdi mdi-sync"></i> Запустить синхронизацию (фоновая задача)';
+            });
+        });
+    }
+
+    function startJobPolling(jobId) {
+        const apiUrl = `/api/core/jobs/${jobId}/`;
+
+        function updateJobStatus() {
+            fetch(apiUrl, {
+                headers: {
+                    'Accept': 'application/json',
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                // Обновляем статус
+                updateStatusBadge(data.status);
+
+                // Обновляем логи
+                updateLogs(data);
+
+                // Проверяем завершение
+                if (data.status === 'completed' || data.status === 'failed' || data.status === 'errored') {
+                    if (lastStatus !== data.status) {
+                        showCompletionNotification(data);
+                        progressBar.classList.remove('progress-bar-animated');
+
+                        // Возвращаем кнопку в рабочее состояние
+                        syncButton.disabled = false;
+                        syncButton.innerHTML = '<i class="mdi mdi-sync"></i> Запустить синхронизацию (фоновая задача)';
+                    }
+                    clearInterval(updateInterval);
+                }
+
+                lastStatus = data.status;
+            })
+            .catch(error => {
+                console.error('Ошибка обновления статуса job:', error);
+            });
+        }
+
+        // Первое обновление сразу
+        updateJobStatus();
+
+        // Запускаем обновление каждые 2 секунды
+        updateInterval = setInterval(updateJobStatus, 2000);
+    }
+
+    function updateStatusBadge(status) {
+        const badges = {
+            'pending': '<span class="badge bg-secondary"><i class="mdi mdi-clock-outline"></i> В очереди</span>',
+            'running': '<span class="badge bg-primary"><i class="mdi mdi-loading mdi-spin"></i> Выполняется</span>',
+            'completed': '<span class="badge bg-success"><i class="mdi mdi-check-circle"></i> Завершено</span>',
+            'failed': '<span class="badge bg-danger"><i class="mdi mdi-alert-circle"></i> Ошибка</span>',
+            'errored': '<span class="badge bg-danger"><i class="mdi mdi-alert-circle"></i> Ошибка</span>'
+        };
+        jobStatusBadge.innerHTML = badges[status] || status;
+
+        // Обновляем прогресс-бар
+        if (status === 'completed') {
+            progressBar.className = 'progress-bar bg-success';
+            progressBar.style.width = '100%';
+            progressText.textContent = 'Завершено!';
+        } else if (status === 'failed' || status === 'errored') {
+            progressBar.className = 'progress-bar bg-danger';
+            progressBar.style.width = '100%';
+            progressText.textContent = 'Ошибка!';
+        } else if (status === 'running') {
+            progressBar.className = 'progress-bar progress-bar-striped progress-bar-animated bg-primary';
+            progressText.textContent = 'Выполняется...';
+        }
+    }
+
+    function updateLogs(data) {
+        if (data.data && data.data.log && data.data.log.length > 0) {
+            let logsHtml = '';
+            data.data.log.forEach(entry => {
+                const time = new Date(entry.created).toLocaleTimeString('ru-RU');
+                const levelMap = {
+                    'DEBUG': 'secondary',
+                    'INFO': 'info',
+                    'WARNING': 'warning',
+                    'ERROR': 'danger',
+                    'CRITICAL': 'danger'
+                };
+                const levelClass = levelMap[entry.level_name] || 'secondary';
+
+                logsHtml += `
+                    <div class="mb-1" style="line-height: 1.6;">
+                        <span class="text-muted">${time}</span>
+                        <span class="badge bg-${levelClass}">${entry.level_name}</span>
+                        <span>${escapeHtml(entry.message)}</span>
+                    </div>
+                `;
+            });
+            jobLog.innerHTML = logsHtml;
+
+            // Автоскролл вниз
+            jobLog.scrollTop = jobLog.scrollHeight;
+        } else if (data.status === 'pending') {
+            jobLog.innerHTML = '<div class="text-muted">Задача в очереди...</div>';
+        } else if (data.status === 'running' && (!data.data || !data.data.log || data.data.log.length === 0)) {
+            jobLog.innerHTML = '<div class="text-muted">Выполняется...</div>';
+        }
+    }
+
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    function showCompletionNotification(data) {
+        // Получаем статистику из логов
+        let stats = {
+            created: 0,
+            updated: 0,
+            unchanged: 0,
+            marked_missing: 0,
+            duration: 0
+        };
+
+        if (data.data && data.data.log) {
+            const logs = data.data.log;
+
+            // Ищем итоговую статистику в логах
+            logs.forEach(log => {
+                const msg = log.message;
+                if (msg.includes('Создано VM:')) {
+                    const match = msg.match(/Создано VM: (\d+)/);
+                    if (match) stats.created = parseInt(match[1]);
+                }
+                if (msg.includes('Обновлено VM:')) {
+                    const match = msg.match(/Обновлено VM: (\d+)/);
+                    if (match) stats.updated = parseInt(match[1]);
+                }
+                if (msg.includes('Без изменений:')) {
+                    const match = msg.match(/Без изменений: (\d+)/);
+                    if (match) stats.unchanged = parseInt(match[1]);
+                }
+                if (msg.includes('Помечено недоступными:')) {
+                    const match = msg.match(/Помечено недоступными: (\d+)/);
+                    if (match) stats.marked_missing = parseInt(match[1]);
+                }
+                if (msg.includes('Длительность:')) {
+                    const match = msg.match(/Длительность: ([\d.]+) сек/);
+                    if (match) stats.duration = parseFloat(match[1]);
+                }
+            });
+        }
+
+        // Формируем сообщение
+        const isSuccess = data.status === 'completed';
+        const alertType = isSuccess ? 'success' : 'danger';
+        const icon = isSuccess ? 'check-circle' : 'alert-circle';
+
+        let message = isSuccess
+            ? '<strong>✅ Синхронизация завершена успешно!</strong>'
+            : '<strong>❌ Синхронизация завершена с ошибками!</strong>';
+
+        if (isSuccess && (stats.created > 0 || stats.updated > 0)) {
+            message += '<br><br>';
+            message += `Создано: <strong>${stats.created}</strong> | `;
+            message += `Обновлено: <strong>${stats.updated}</strong> | `;
+            message += `Без изменений: <strong>${stats.unchanged}</strong> | `;
+            message += `Помечено недоступными: <strong>${stats.marked_missing}</strong>`;
+            if (stats.duration > 0) {
+                message += `<br>Длительность: <strong>${stats.duration.toFixed(2)} сек</strong>`;
+            }
+        }
+
+        // Создаем уведомление
+        const alertDiv = document.createElement('div');
+        alertDiv.className = `alert alert-${alertType} alert-dismissible fade show`;
+        alertDiv.setAttribute('role', 'alert');
+        alertDiv.innerHTML = `
+            <i class="mdi mdi-${icon}"></i> ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        `;
+
+        // Вставляем в начало контейнера прогресса
+        progressContainer.insertBefore(alertDiv, progressContainer.firstChild);
+
+        // Прокручиваем к уведомлению
+        alertDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+})();
+</script>
 {% endblock %}
