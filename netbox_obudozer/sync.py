@@ -201,6 +201,26 @@ def get_field_changes(vm: VirtualMachine, vcenter_data: Dict, cluster_group_name
             'new': new_vmtools_ver
         }
 
+    # Проверяем OS поля через Custom Fields (используем цикл для уменьшения повторений)
+    os_fields = [
+        'os_pretty_name',
+        'os_family_name',
+        'os_distro_name',
+        'os_distro_version',
+        'os_kernel_version',
+        'os_bitness',
+    ]
+
+    for field_name in os_fields:
+        current_value = vm.custom_field_data.get(field_name) if vm.custom_field_data else None
+        new_value = vcenter_data.get(field_name)
+
+        if current_value != new_value:
+            changes[field_name] = {
+                'old': current_value,
+                'new': new_value
+            }
+
     # Если VM была помечена как failed, но теперь найдена в vCenter
     if vm.status == 'failed':
         changes['status'] = {
@@ -422,6 +442,12 @@ def apply_changes(
                 vm.custom_field_data['tools_status'] = vm_data.get('tools_status')
                 vm.custom_field_data['vmtools_description'] = vm_data.get('vmtools_description')
                 vm.custom_field_data['vmtools_version_number'] = vm_data.get('vmtools_version_number')
+                vm.custom_field_data['os_pretty_name'] = vm_data.get('os_pretty_name')
+                vm.custom_field_data['os_family_name'] = vm_data.get('os_family_name')
+                vm.custom_field_data['os_distro_name'] = vm_data.get('os_distro_name')
+                vm.custom_field_data['os_distro_version'] = vm_data.get('os_distro_version')
+                vm.custom_field_data['os_kernel_version'] = vm_data.get('os_kernel_version')
+                vm.custom_field_data['os_bitness'] = vm_data.get('os_bitness')
                 vm.save()
 
                 result.created += 1
@@ -445,12 +471,17 @@ def apply_changes(
 
         for idx, (vm, changes) in enumerate(diff.to_update, 1):
             try:
+                # Список custom fields для обработки в цикле
+                custom_fields = [
+                    'vcenter_id', 'ip_address', 'tools_status',
+                    'vmtools_description', 'vmtools_version_number',
+                    'os_pretty_name', 'os_family_name', 'os_distro_name',
+                    'os_distro_version', 'os_kernel_version', 'os_bitness'
+                ]
+
                 # Применяем изменения
                 for field_name, change in changes.items():
-                    if field_name == 'vcenter_id':
-                        vm.custom_field_data = vm.custom_field_data or {}
-                        vm.custom_field_data['vcenter_id'] = change['new']
-                    elif field_name == 'vcenter_cluster':
+                    if field_name == 'vcenter_cluster':
                         vm.custom_field_data = vm.custom_field_data or {}
                         vm.custom_field_data['vcenter_cluster'] = change['new']
 
@@ -462,19 +493,12 @@ def apply_changes(
                             cluster_group
                         )
                         vm.cluster = new_cluster
-                    elif field_name == 'ip_address':
+                    elif field_name in custom_fields:
+                        # Обработка всех custom fields в цикле
                         vm.custom_field_data = vm.custom_field_data or {}
-                        vm.custom_field_data['ip_address'] = change['new']
-                    elif field_name == 'tools_status':
-                        vm.custom_field_data = vm.custom_field_data or {}
-                        vm.custom_field_data['tools_status'] = change['new']
-                    elif field_name == 'vmtools_description':
-                        vm.custom_field_data = vm.custom_field_data or {}
-                        vm.custom_field_data['vmtools_description'] = change['new']
-                    elif field_name == 'vmtools_version_number':
-                        vm.custom_field_data = vm.custom_field_data or {}
-                        vm.custom_field_data['vmtools_version_number'] = change['new']
+                        vm.custom_field_data[field_name] = change['new']
                     else:
+                        # Встроенные поля VirtualMachine (vcpus, memory, status)
                         setattr(vm, field_name, change['new'])
 
                 vm.custom_field_data = vm.custom_field_data or {}
@@ -722,10 +746,72 @@ def sync_vcenter_vms(logger=None) -> SyncResult:
             }
         )
 
+        os_pretty_name_field, created = CustomField.objects.get_or_create(
+            name='os_pretty_name',
+            defaults={
+                'label': 'OS Pretty Name',
+                'type': 'text',
+                'description': 'OS pretty name from guestInfo.detailed.data (e.g., "Ubuntu 22.04.3 LTS")',
+                'required': False,
+            }
+        )
+
+        os_family_name_field, created = CustomField.objects.get_or_create(
+            name='os_family_name',
+            defaults={
+                'label': 'OS Family Name',
+                'type': 'text',
+                'description': 'OS family name from guestInfo.detailed.data (e.g., "Linux")',
+                'required': False,
+            }
+        )
+
+        os_distro_name_field, created = CustomField.objects.get_or_create(
+            name='os_distro_name',
+            defaults={
+                'label': 'OS Distro Name',
+                'type': 'text',
+                'description': 'OS distribution name from guestInfo.detailed.data (e.g., "ubuntu")',
+                'required': False,
+            }
+        )
+
+        os_distro_version_field, created = CustomField.objects.get_or_create(
+            name='os_distro_version',
+            defaults={
+                'label': 'OS Distro Version',
+                'type': 'text',
+                'description': 'OS distribution version from guestInfo.detailed.data (e.g., "22.04")',
+                'required': False,
+            }
+        )
+
+        os_kernel_version_field, created = CustomField.objects.get_or_create(
+            name='os_kernel_version',
+            defaults={
+                'label': 'OS Kernel Version',
+                'type': 'text',
+                'description': 'OS kernel version from guestInfo.detailed.data (e.g., "5.15.0-91-generic")',
+                'required': False,
+            }
+        )
+
+        os_bitness_field, created = CustomField.objects.get_or_create(
+            name='os_bitness',
+            defaults={
+                'label': 'OS Bitness',
+                'type': 'text',
+                'description': 'OS bitness from guestInfo.detailed.data (e.g., "64")',
+                'required': False,
+            }
+        )
+
         # Привязываем Custom Fields к VirtualMachine
         vm_content_type = ContentType.objects.get_for_model(VirtualMachine)
         for field in [vcenter_id_field, last_synced_field, vcenter_cluster_field, ip_address_field,
-                      tools_status_field, vmtools_description_field, vmtools_version_number_field]:
+                      tools_status_field, vmtools_description_field, vmtools_version_number_field,
+                      os_pretty_name_field, os_family_name_field, os_distro_name_field,
+                      os_distro_version_field, os_kernel_version_field, os_bitness_field]:
             if vm_content_type not in field.object_types.all():
                 field.object_types.add(vm_content_type)
 

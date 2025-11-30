@@ -148,6 +148,66 @@ def _extract_extraconfig_value(extra_config, key):
         return None
 
 
+def _extract_guestinfo_detailed_data(extra_config):
+    """
+    Извлекает и парсит данные guestInfo.detailed.data для виртуальной машины.
+
+    Args:
+        extra_config: Список объектов config.extraConfig
+
+    Returns:
+        Dict: Словарь с информацией об ОС гостевой системы:
+            - prettyName (str): Красивое имя ОС (например: "Ubuntu 22.04.3 LTS")
+            - familyName (str): Семейство ОС (например: "Linux")
+            - distroName (str): Имя дистрибутива (например: "ubuntu")
+            - distroVersion (str): Версия дистрибутива (например: "22.04")
+            - kernelVersion (str): Версия ядра (например: "5.15.0-91-generic")
+            - bitness (str): Разрядность (например: "64")
+
+    Example:
+        >>> os_info = _extract_guestinfo_detailed_data(vm.config.extraConfig)
+        >>> print(os_info['prettyName'])
+        Ubuntu 22.04.3 LTS
+    """
+    import re
+
+    # Дефолтные значения
+    default_result = {
+        "prettyName": None,
+        "familyName": None,
+        "distroName": None,
+        "distroVersion": None,
+        "kernelVersion": None,
+        "bitness": None,
+    }
+
+    if not extra_config:
+        return default_result
+
+    try:
+        # Извлекаем данные по ключу 'guestInfo.detailed.data'
+        detailed_data = next(
+            (opt.value for opt in extra_config if getattr(opt, 'key', None) == 'guestInfo.detailed.data'),
+            None
+        )
+
+        # Если данные найдены, парсим их
+        if detailed_data:
+            parsed_data = dict(re.findall(r"(\w+)='([^']*)'", detailed_data))
+            return {
+                "prettyName": parsed_data.get('prettyName'),
+                "familyName": parsed_data.get('familyName'),
+                "distroName": parsed_data.get('distroName'),
+                "distroVersion": parsed_data.get('distroVersion'),
+                "kernelVersion": parsed_data.get('kernelVersion'),
+                "bitness": parsed_data.get('bitness'),
+            }
+    except Exception as e:
+        logger.warning(f"Failed to extract guestInfo.detailed.data: {e}")
+
+    return default_result
+
+
 def _extract_disk_info(devices):
     """
     Извлекает информацию о виртуальных дисках из списка устройств ВМ.
@@ -336,6 +396,15 @@ def get_vcenter_vms() -> List[Dict]:
                 extra_config = props.get('config.extraConfig')
                 vm_data['vmtools_description'] = _extract_extraconfig_value(extra_config, 'guestinfo.vmtools.description')
                 vm_data['vmtools_version_number'] = _extract_extraconfig_value(extra_config, 'guestinfo.vmtools.versionNumber')
+
+                # Извлекаем детальную информацию об ОС из guestInfo.detailed.data
+                os_info = _extract_guestinfo_detailed_data(extra_config)
+                vm_data['os_pretty_name'] = os_info['prettyName']
+                vm_data['os_family_name'] = os_info['familyName']
+                vm_data['os_distro_name'] = os_info['distroName']
+                vm_data['os_distro_version'] = os_info['distroVersion']
+                vm_data['os_kernel_version'] = os_info['kernelVersion']
+                vm_data['os_bitness'] = os_info['bitness']
 
                 vms.append(vm_data)
 
