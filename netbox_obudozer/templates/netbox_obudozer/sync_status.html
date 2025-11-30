@@ -130,16 +130,6 @@
                             <span id="job-status-badge"></span>
                         </div>
 
-                        <!-- Прогресс-бар -->
-                        <div class="progress mb-3" style="height: 25px;" id="progress-bar-container">
-                            <div class="progress-bar progress-bar-striped progress-bar-animated bg-primary"
-                                 role="progressbar"
-                                 style="width: 100%"
-                                 id="progress-bar">
-                                <span id="progress-text">Выполняется...</span>
-                            </div>
-                        </div>
-
                         <!-- Логи -->
                         <div class="card">
                             <div class="card-header">
@@ -277,17 +267,19 @@
                 console.log('Job status:', data.status);
                 console.log('Job data.data:', data.data);
 
+                // NetBox возвращает статус как объект {value: 'completed', label: 'Completed'}
+                const statusValue = data.status.value || data.status;
+
                 // Обновляем статус
-                updateStatusBadge(data.status);
+                updateStatusBadge(statusValue, data.status.label || statusValue);
 
                 // Обновляем логи
                 updateLogs(data);
 
                 // Проверяем завершение
-                if (data.status === 'completed' || data.status === 'failed' || data.status === 'errored') {
-                    if (lastStatus !== data.status) {
+                if (statusValue === 'completed' || statusValue === 'failed' || statusValue === 'errored') {
+                    if (lastStatus !== statusValue) {
                         showCompletionNotification(data);
-                        progressBar.classList.remove('progress-bar-animated');
 
                         // Возвращаем кнопку в рабочее состояние
                         syncButton.disabled = false;
@@ -296,7 +288,7 @@
                     clearInterval(updateInterval);
                 }
 
-                lastStatus = data.status;
+                lastStatus = statusValue;
             })
             .catch(error => {
                 console.error('Ошибка обновления статуса job:', error);
@@ -311,7 +303,7 @@
         updateInterval = setInterval(updateJobStatus, 2000);
     }
 
-    function updateStatusBadge(status) {
+    function updateStatusBadge(statusValue, statusLabel) {
         const badges = {
             'pending': '<span class="badge bg-secondary"><i class="mdi mdi-clock-outline"></i> В очереди</span>',
             'running': '<span class="badge bg-primary"><i class="mdi mdi-loading mdi-spin"></i> Выполняется</span>',
@@ -319,21 +311,7 @@
             'failed': '<span class="badge bg-danger"><i class="mdi mdi-alert-circle"></i> Ошибка</span>',
             'errored': '<span class="badge bg-danger"><i class="mdi mdi-alert-circle"></i> Ошибка</span>'
         };
-        jobStatusBadge.innerHTML = badges[status] || status;
-
-        // Обновляем прогресс-бар
-        if (status === 'completed') {
-            progressBar.className = 'progress-bar bg-success';
-            progressBar.style.width = '100%';
-            progressText.textContent = 'Завершено!';
-        } else if (status === 'failed' || status === 'errored') {
-            progressBar.className = 'progress-bar bg-danger';
-            progressBar.style.width = '100%';
-            progressText.textContent = 'Ошибка!';
-        } else if (status === 'running') {
-            progressBar.className = 'progress-bar progress-bar-striped progress-bar-animated bg-primary';
-            progressText.textContent = 'Выполняется...';
-        }
+        jobStatusBadge.innerHTML = badges[statusValue] || statusLabel || statusValue;
     }
 
     function updateLogs(data) {
@@ -404,12 +382,18 @@
             duration: 0
         };
 
+        // Ищем логи в разных местах
+        let logs = null;
         if (data.data && data.data.log) {
-            const logs = data.data.log;
+            logs = data.data.log;
+        } else if (data.log_entries) {
+            logs = data.log_entries;
+        }
 
-            // Ищем итоговую статистику в логах
+        // Парсим статистику из логов
+        if (logs && logs.length > 0) {
             logs.forEach(log => {
-                const msg = log.message;
+                const msg = log.message || log.msg || String(log);
                 if (msg.includes('Создано VM:')) {
                     const match = msg.match(/Создано VM: (\d+)/);
                     if (match) stats.created = parseInt(match[1]);
@@ -434,7 +418,8 @@
         }
 
         // Формируем сообщение
-        const isSuccess = data.status === 'completed';
+        const statusValue = data.status.value || data.status;
+        const isSuccess = statusValue === 'completed';
         const alertType = isSuccess ? 'success' : 'danger';
         const icon = isSuccess ? 'check-circle' : 'alert-circle';
 
@@ -442,7 +427,9 @@
             ? '<strong>✅ Синхронизация завершена успешно!</strong>'
             : '<strong>❌ Синхронизация завершена с ошибками!</strong>';
 
-        if (isSuccess && (stats.created > 0 || stats.updated > 0)) {
+        // Добавляем статистику если есть
+        const hasStats = stats.created > 0 || stats.updated > 0 || stats.unchanged > 0;
+        if (hasStats) {
             message += '<br><br>';
             message += `Создано: <strong>${stats.created}</strong> | `;
             message += `Обновлено: <strong>${stats.updated}</strong> | `;
