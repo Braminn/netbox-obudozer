@@ -201,7 +201,7 @@ def get_field_changes(vm: VirtualMachine, vcenter_data: Dict, cluster_group_name
             'new': new_vmtools_ver
         }
 
-    # Проверяем OS поля через Custom Fields (используем цикл для уменьшения повторений)
+    # Проверяем OS поля и creation_date через Custom Fields (используем цикл для уменьшения повторений)
     os_fields = [
         'os_pretty_name',
         'os_family_name',
@@ -209,6 +209,7 @@ def get_field_changes(vm: VirtualMachine, vcenter_data: Dict, cluster_group_name
         'os_distro_version',
         'os_kernel_version',
         'os_bitness',
+        'creation_date',
     ]
 
     for field_name in os_fields:
@@ -448,6 +449,7 @@ def apply_changes(
                 vm.custom_field_data['os_distro_version'] = vm_data.get('os_distro_version')
                 vm.custom_field_data['os_kernel_version'] = vm_data.get('os_kernel_version')
                 vm.custom_field_data['os_bitness'] = vm_data.get('os_bitness')
+                vm.custom_field_data['creation_date'] = vm_data.get('creation_date')
                 vm.save()
 
                 result.created += 1
@@ -476,7 +478,8 @@ def apply_changes(
                     'vcenter_id', 'ip_address', 'tools_status',
                     'vmtools_description', 'vmtools_version_number',
                     'os_pretty_name', 'os_family_name', 'os_distro_name',
-                    'os_distro_version', 'os_kernel_version', 'os_bitness'
+                    'os_distro_version', 'os_kernel_version', 'os_bitness',
+                    'creation_date'
                 ]
 
                 # Применяем изменения
@@ -806,12 +809,23 @@ def sync_vcenter_vms(logger=None) -> SyncResult:
             }
         )
 
+        creation_date_field, created = CustomField.objects.get_or_create(
+            name='creation_date',
+            defaults={
+                'label': 'Creation Date',
+                'type': 'date',
+                'description': 'VM creation date from config.createDate',
+                'required': False,
+            }
+        )
+
         # Привязываем Custom Fields к VirtualMachine
         vm_content_type = ContentType.objects.get_for_model(VirtualMachine)
         for field in [vcenter_id_field, last_synced_field, vcenter_cluster_field, ip_address_field,
                       tools_status_field, vmtools_description_field, vmtools_version_number_field,
                       os_pretty_name_field, os_family_name_field, os_distro_name_field,
-                      os_distro_version_field, os_kernel_version_field, os_bitness_field]:
+                      os_distro_version_field, os_kernel_version_field, os_bitness_field,
+                      creation_date_field]:
             if vm_content_type not in field.object_types.all():
                 field.object_types.add(vm_content_type)
 

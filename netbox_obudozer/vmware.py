@@ -316,7 +316,7 @@ def get_vcenter_vms() -> List[Dict]:
         # Определяем нужные свойства для получения
         property_spec = vmodl.query.PropertyCollector.PropertySpec(
             type=vim.VirtualMachine,
-            pathSet=['name', 'runtime.powerState', 'config.instanceUuid', 'config.uuid', 'runtime.host', 'config.hardware.device', 'config.hardware.numCPU', 'config.hardware.memoryMB', 'guest.ipAddress', 'guest.toolsStatus', 'config.extraConfig']
+            pathSet=['name', 'runtime.powerState', 'config.instanceUuid', 'config.uuid', 'runtime.host', 'config.hardware.device', 'config.hardware.numCPU', 'config.hardware.memoryMB', 'guest.ipAddress', 'guest.toolsStatus', 'config.extraConfig', 'config.createDate']
         )
 
         # Определяем объекты для запроса
@@ -405,6 +405,11 @@ def get_vcenter_vms() -> List[Dict]:
                 vm_data['os_distro_version'] = os_info['distroVersion']
                 vm_data['os_kernel_version'] = os_info['kernelVersion']
                 vm_data['os_bitness'] = os_info['bitness']
+
+                # Получаем дату создания VM
+                create_date = props.get('config.createDate')
+                # Преобразуем в ISO формат для хранения в NetBox
+                vm_data['creation_date'] = create_date.isoformat() if create_date else None
 
                 vms.append(vm_data)
 
