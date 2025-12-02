@@ -4,7 +4,6 @@
 Плагин управления ресурсами ЦОД с интеграцией VMware vCenter.
 """
 from netbox.plugins import PluginConfig
-from .template_content import template_extensions
 
 
 class ObudozerPluginConfig(PluginConfig):
@@ -37,7 +36,7 @@ class ObudozerPluginConfig(PluginConfig):
         'auto_sync_interval': 3600,  # секунды (1 час)
     }
     min_version = '4.4.0'
-    template_extensions = template_extensions
+    template_extensions = 'template_content.template_extensions'
 
     def ready(self):
         """
