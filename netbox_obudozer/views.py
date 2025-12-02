@@ -123,6 +123,13 @@ class BusinessServiceDeleteView(generic.ObjectDeleteView):
     queryset = models.BusinessService.objects.all()
 
 
+class BusinessServiceChangeLogView(generic.ObjectChangeLogView):
+    """
+    История изменений бизнес-сервиса.
+    """
+    queryset = models.BusinessService.objects.all()
+
+
 class BusinessServiceBulkImportView(generic.BulkImportView):
     """
     Массовый импорт бизнес-сервисов из CSV.

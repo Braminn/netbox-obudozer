@@ -17,6 +17,7 @@ urlpatterns = [
     path('business-services/<int:pk>/', views.BusinessServiceView.as_view(), name='businessservice'),
     path('business-services/<int:pk>/edit/', views.BusinessServiceEditView.as_view(), name='businessservice_edit'),
     path('business-services/<int:pk>/delete/', views.BusinessServiceDeleteView.as_view(), name='businessservice_delete'),
+    path('business-services/<int:pk>/changelog/', views.BusinessServiceChangeLogView.as_view(), name='businessservice_changelog'),
 
     # BusinessService Bulk Operations
     path('business-services/import/', views.BusinessServiceBulkImportView.as_view(), name='businessservice_import'),
