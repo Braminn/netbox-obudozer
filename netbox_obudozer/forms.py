@@ -5,6 +5,7 @@ from tenancy.models import Tenant
 from virtualization.models import VirtualMachine
 from utilities.forms.fields import DynamicModelChoiceField, DynamicModelMultipleChoiceField
 from utilities.forms.widgets import DatePicker
+from utilities.choices import add_blank_choice
 from .models import BusinessService, ServiceVMAssignment
 
 
@@ -53,10 +54,10 @@ class BusinessServiceFilterForm(NetBoxModelFilterSetForm):
     """
     model = BusinessService
     fieldsets = (
-        (None, ('q', 'filter_id', 'tag')),
-        ('Атрибуты', ('organization_id', 'status', 'responsible_person')),
-        ('Даты договора', ('contract_start_date_after', 'contract_start_date_before',
-                           'contract_end_date_after', 'contract_end_date_before')),
+        (None, {'fields': ('q', 'filter_id', 'tag')}),
+        ('Атрибуты', {'fields': ('organization_id', 'status', 'responsible_person')}),
+        ('Даты договора', {'fields': ('contract_start_date_after', 'contract_start_date_before',
+                                      'contract_end_date_after', 'contract_end_date_before')}),
     )
 
     organization_id = DynamicModelMultipleChoiceField(
@@ -66,7 +67,7 @@ class BusinessServiceFilterForm(NetBoxModelFilterSetForm):
     )
 
     status = forms.MultipleChoiceField(
-        choices=BusinessService.StatusChoices.choices,
+        choices=add_blank_choice(BusinessService.StatusChoices),
         required=False,
         label='Статус'
     )
@@ -108,7 +109,7 @@ class BusinessServiceBulkEditForm(NetBoxModelBulkEditForm):
     model = BusinessService
 
     status = forms.ChoiceField(
-        choices=BusinessService.StatusChoices.choices,
+        choices=add_blank_choice(BusinessService.StatusChoices),
         required=False,
         label='Статус'
     )
