@@ -12,9 +12,9 @@ class Migration(migrations.Migration):
     initial = True
 
     dependencies = [
-        ('tenancy', '0013_contactassignment_rename_content_type'),
-        ('virtualization', '0040_virtualmachine_config_template'),
-        ('extras', '0115_convert_dashboard_widgets'),
+        ('tenancy', '__latest__'),
+        ('virtualization', '__latest__'),
+        ('extras', '__latest__'),
     ]
 
     operations = [
@@ -26,7 +26,6 @@ class Migration(migrations.Migration):
                 ('last_updated', models.DateTimeField(auto_now=True, null=True)),
                 ('custom_field_data', models.JSONField(blank=True, default=dict, encoder=utilities.json.CustomFieldJSONEncoder)),
                 ('description', models.TextField(blank=True, verbose_name='Описание')),
-                ('comments', models.TextField(blank=True)),
                 ('name', models.CharField(max_length=200, verbose_name='Название сервиса')),
                 ('contract_start_date', models.DateField(verbose_name='Дата заключения договора')),
                 ('contract_end_date', models.DateField(blank=True, null=True, verbose_name='Дата окончания договора')),
