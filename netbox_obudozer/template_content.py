@@ -4,7 +4,6 @@ Template extensions для плагина netbox_obudozer
 Расширяет стандартные страницы NetBox дополнительным контентом.
 """
 from netbox.plugins import PluginTemplateExtension
-from .models import ServiceVMAssignment
 
 
 class VirtualMachineBusinessServices(PluginTemplateExtension):
@@ -17,6 +16,9 @@ class VirtualMachineBusinessServices(PluginTemplateExtension):
         """
         Добавляет панель бизнес-сервисов в правую колонку страницы VM.
         """
+        # Импортируем модель внутри метода, чтобы избежать проблем с AppRegistryNotReady
+        from .models import ServiceVMAssignment
+
         # Получаем привязки сервисов для данной VM
         assignments = ServiceVMAssignment.objects.filter(
             virtual_machine=self.context['object']
