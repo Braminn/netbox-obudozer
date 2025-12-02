@@ -23,7 +23,7 @@ class BusinessServiceForm(NetBoxModelForm):
         fields = [
             'name', 'organization', 'status', 'contract_start_date',
             'contract_end_date', 'request_number', 'responsible_person',
-            'description', 'tags', 'comments'
+            'description', 'tags'
         ]
         widgets = {
             'contract_start_date': DatePicker(),
@@ -132,7 +132,7 @@ class BusinessServiceBulkEditForm(NetBoxModelBulkEditForm):
         label='Описание'
     )
 
-    nullable_fields = ['contract_end_date', 'description', 'request_number', 'comments']
+    nullable_fields = ['contract_end_date', 'description', 'request_number']
 
 
 class ServiceVMAssignmentForm(NetBoxModelForm):
