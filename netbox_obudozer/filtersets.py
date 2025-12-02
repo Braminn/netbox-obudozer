@@ -109,9 +109,12 @@ class BusinessServiceFilterSet(NetBoxModelFilterSet):
         return queryset
 
 
-class ServiceVMAssignmentFilterSet(NetBoxModelFilterSet):
+class ServiceVMAssignmentFilterSet(django_filters.FilterSet):
     """
     FilterSet для модели ServiceVMAssignment.
+
+    Использует базовый FilterSet, так как ServiceVMAssignment
+    наследует models.Model, а не NetBoxModel.
     """
     service_id = django_filters.ModelMultipleChoiceFilter(
         queryset=BusinessService.objects.all(),
@@ -151,11 +154,16 @@ class ServiceVMAssignmentFilterSet(NetBoxModelFilterSet):
         label='Дата назначения (до)'
     )
 
+    q = django_filters.CharFilter(
+        method='filter_search',
+        label='Поиск'
+    )
+
     class Meta:
         model = ServiceVMAssignment
         fields = ['id', 'service', 'virtual_machine', 'assigned_date']
 
-    def search(self, queryset, name, value):
+    def filter_search(self, queryset, name, value):
         """
         Кастомный поиск по нескольким полям.
         """
