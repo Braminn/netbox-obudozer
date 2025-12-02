@@ -3,7 +3,7 @@ from django.core.exceptions import ValidationError
 from netbox.forms import NetBoxModelForm, NetBoxModelFilterSetForm, NetBoxModelBulkEditForm
 from tenancy.models import Tenant
 from virtualization.models import VirtualMachine
-from utilities.forms.fields import DynamicModelChoiceField, DynamicModelMultipleChoiceField, TagFilterField
+from utilities.forms.fields import DynamicModelChoiceField, DynamicModelMultipleChoiceField
 from utilities.forms.widgets import DatePicker
 from .models import BusinessService, ServiceVMAssignment
 
@@ -16,10 +16,6 @@ class BusinessServiceForm(NetBoxModelForm):
         queryset=Tenant.objects.all(),
         label='Организация',
         help_text='Клиент/организация'
-    )
-
-    tags = TagFilterField(
-        required=False
     )
 
     class Meta:
@@ -103,8 +99,6 @@ class BusinessServiceFilterForm(NetBoxModelFilterSetForm):
         label='Договор до (до)',
         widget=DatePicker()
     )
-
-    tag = TagFilterField(model)
 
 
 class BusinessServiceBulkEditForm(NetBoxModelBulkEditForm):
