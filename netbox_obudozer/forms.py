@@ -5,8 +5,15 @@ from tenancy.models import Tenant
 from virtualization.models import VirtualMachine
 from utilities.forms.fields import DynamicModelChoiceField, DynamicModelMultipleChoiceField
 from utilities.forms.widgets import DatePicker
-from utilities.choices import add_blank_choice
 from .models import BusinessService, ServiceVMAssignment
+
+
+def add_blank_choice(choices):
+    """
+    Добавляет пустой выбор в начало списка choices.
+    Используется для форм фильтрации и массового редактирования.
+    """
+    return [('', '---------')] + list(choices)
 
 
 class BusinessServiceForm(NetBoxModelForm):
