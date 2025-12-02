@@ -4,6 +4,7 @@ from netbox.forms import NetBoxModelForm, NetBoxModelFilterSetForm, NetBoxModelB
 from tenancy.models import Tenant
 from virtualization.models import VirtualMachine
 from utilities.forms.fields import DynamicModelChoiceField, DynamicModelMultipleChoiceField
+from utilities.forms.rendering import FieldSet
 from utilities.forms.widgets import DatePicker
 from .models import BusinessService, ServiceVMAssignment
 
@@ -61,10 +62,10 @@ class BusinessServiceFilterForm(NetBoxModelFilterSetForm):
     """
     model = BusinessService
     fieldsets = (
-        (None, {'fields': ('q', 'filter_id', 'tag')}),
-        ('Атрибуты', {'fields': ('organization_id', 'status', 'responsible_person')}),
-        ('Даты договора', {'fields': ('contract_start_date_after', 'contract_start_date_before',
-                                      'contract_end_date_after', 'contract_end_date_before')}),
+        FieldSet('q', 'filter_id', 'tag'),
+        FieldSet('organization_id', 'status', 'responsible_person', name='Атрибуты'),
+        FieldSet('contract_start_date_after', 'contract_start_date_before',
+                 'contract_end_date_after', 'contract_end_date_before', name='Даты договора'),
     )
 
     organization_id = DynamicModelMultipleChoiceField(
