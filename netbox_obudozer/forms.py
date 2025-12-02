@@ -75,7 +75,7 @@ class BusinessServiceFilterForm(NetBoxModelFilterSetForm):
     )
 
     status = forms.MultipleChoiceField(
-        choices=add_blank_choice(BusinessService.StatusChoices),
+        choices=add_blank_choice(BusinessService.StatusChoices.choices),
         required=False,
         label='Статус'
     )
@@ -117,7 +117,7 @@ class BusinessServiceBulkEditForm(NetBoxModelBulkEditForm):
     model = BusinessService
 
     status = forms.ChoiceField(
-        choices=add_blank_choice(BusinessService.StatusChoices),
+        choices=add_blank_choice(BusinessService.StatusChoices.choices),
         required=False,
         label='Статус'
     )
