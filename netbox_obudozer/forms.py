@@ -43,6 +43,10 @@ class BusinessServiceForm(NetBoxModelForm):
     def clean(self):
         cleaned_data = super().clean()
 
+        # Если родительская валидация не прошла, cleaned_data может быть None
+        if not cleaned_data:
+            return cleaned_data
+
         contract_start = cleaned_data.get('contract_start_date')
         contract_end = cleaned_data.get('contract_end_date')
 
@@ -169,6 +173,10 @@ class ServiceVMAssignmentForm(NetBoxModelForm):
 
     def clean(self):
         cleaned_data = super().clean()
+
+        # Если родительская валидация не прошла, cleaned_data может быть None
+        if not cleaned_data:
+            return cleaned_data
 
         service = cleaned_data.get('service')
         vm = cleaned_data.get('virtual_machine')
