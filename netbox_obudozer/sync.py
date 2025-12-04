@@ -235,7 +235,8 @@ def get_field_changes(vm: VirtualMachine, vcenter_data: Dict, cluster_group_name
 def calculate_diff(
     vcenter_vms: List[Dict],
     existing_vms: Dict[str, VirtualMachine],
-    cluster_group_name: str
+    cluster_group_name: str,
+    logger=None
 ) -> VMDiff:
     """
     ФАЗА 2: Вычисляет различия между vCenter и NetBox.
@@ -244,12 +245,15 @@ def calculate_diff(
         vcenter_vms: Список VM из vCenter
         existing_vms: Словарь существующих VM в NetBox (name -> VMRecord)
         cluster_group_name: Имя ClusterGroup (для default кластера)
+        logger: Опциональный logger для фоновых задач (JobRunner.logger)
 
     Returns:
         VMDiff объект с информацией о необходимых изменениях
     """
     diff = VMDiff()
     vcenter_names = set()
+    logged_changes_count = 0
+    max_log_changes = 10  # Логируем только первые 10 VM с изменениями
 
     # Проходим по всем VM из vCenter
     for vm_data in vcenter_vms:
@@ -262,6 +266,12 @@ def calculate_diff(
             changes = get_field_changes(vm_record, vm_data, cluster_group_name)
 
             if changes:
+                # Логируем изменения для диагностики (только первые несколько)
+                if logger and logged_changes_count < max_log_changes:
+                    changes_str = ', '.join([f"{field}: '{change['old']}' → '{change['new']}'"
+                                             for field, change in changes.items()])
+                    logger.info(f"  [DIFF] VM '{vm_name}' будет обновлена: {changes_str}")
+                    logged_changes_count += 1
                 diff.to_update.append((vm_record, changes))
             else:
                 diff.to_skip.append(vm_record)
@@ -489,6 +499,12 @@ def apply_changes(
 
         for idx, (vm, changes) in enumerate(diff.to_update, 1):
             try:
+                # Логируем причину обновления
+                if logger:
+                    changes_summary = ', '.join([f"{field}: {change['old']} → {change['new']}"
+                                                  for field, change in changes.items()])
+                    logger.info(f"    VM '{vm.name}': {changes_summary}")
+
                 # Список custom fields для обработки в цикле
                 custom_fields = [
                     'vcenter_id', 'ip_address', 'tools_status',
@@ -880,7 +896,7 @@ def sync_vcenter_vms(logger=None) -> SyncResult:
         logger.info("🔍 ФАЗА 2: Анализ различий")
 
     try:
-        diff = calculate_diff(vcenter_vms, existing_vms, cluster_group_name)
+        diff = calculate_diff(vcenter_vms, existing_vms, cluster_group_name, logger=logger)
 
         if logger:
             logger.info(f"  → Создать: {len(diff.to_create)} VM")
