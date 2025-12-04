@@ -8,8 +8,12 @@ from django.shortcuts import render
 from django.contrib.auth.decorators import permission_required
 from django.http import JsonResponse
 
+from netbox.views.generic import ObjectListView
+
 from .sync import get_sync_status
 from .jobs import VCenterSyncJob
+from .models import ObuServices
+from .tables import ObuServicesTable
 
 
 @permission_required('virtualization.add_virtualmachine')
@@ -51,3 +55,17 @@ def sync_vcenter_view(request):
     return render(request, 'netbox_obudozer/sync_status.html', {
         'sync_status': sync_status,
     })
+
+
+class ObuServicesListView(ObjectListView):
+    """
+    Представление для отображения списка услуг OBU.
+
+    ObjectListView автоматически предоставляет:
+    - Пагинацию
+    - Сортировку
+    - Базовый поиск (если определен filterset)
+    - Экспорт данных
+    """
+    queryset = ObuServices.objects.all()
+    table = ObuServicesTable

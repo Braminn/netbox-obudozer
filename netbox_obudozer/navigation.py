@@ -20,4 +20,8 @@ menu_items = (
             ),
         )
     ),
+    PluginMenuItem(
+        link='plugins:netbox_obudozer:obuservices_list',
+        link_text='Услуги OBU',
+    ),
 )
