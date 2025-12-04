@@ -310,7 +310,7 @@ def get_or_create_cluster(
     return cluster
 
 
-def sync_vm_disks(vm: VirtualMachine, vcenter_disks: List[Dict]):
+def sync_vm_disks(vm: VirtualMachine, vcenter_disks: List[Dict]) -> bool:
     """
     Синхронизирует диски виртуальной машины с данными из vCenter.
 
@@ -320,13 +320,21 @@ def sync_vm_disks(vm: VirtualMachine, vcenter_disks: List[Dict]):
         vm: Объект VirtualMachine в NetBox
         vcenter_disks: Список дисков из vCenter (из vm_data['disks'])
 
+    Returns:
+        bool: True если были внесены изменения в диски, False если диски не изменились
+
     Example:
-        >>> sync_vm_disks(vm, [{'name': 'Hard disk 1', 'size_mb': 51200, 'type': 'FlatVer2', 'thin_provisioned': True}])
+        >>> changed = sync_vm_disks(vm, [{'name': 'Hard disk 1', 'size_mb': 51200, 'type': 'FlatVer2', 'thin_provisioned': True}])
     """
+    changes_made = False
+
     if not vcenter_disks:
         # Если у ВМ нет дисков в vCenter, удаляем все существующие диски в NetBox
-        VirtualDisk.objects.filter(virtual_machine=vm).delete()
-        return
+        deleted_count = VirtualDisk.objects.filter(virtual_machine=vm).count()
+        if deleted_count > 0:
+            VirtualDisk.objects.filter(virtual_machine=vm).delete()
+            changes_made = True
+        return changes_made
 
     # Получаем существующие диски из NetBox
     existing_disks = {disk.name: disk for disk in VirtualDisk.objects.filter(virtual_machine=vm)}
@@ -362,6 +370,7 @@ def sync_vm_disks(vm: VirtualMachine, vcenter_disks: List[Dict]):
 
             if updated:
                 disk.save()
+                changes_made = True
         else:
             # Создаем новый диск
             VirtualDisk.objects.create(
@@ -370,11 +379,15 @@ def sync_vm_disks(vm: VirtualMachine, vcenter_disks: List[Dict]):
                 size=disk_data['size_mb'],
                 description=description
             )
+            changes_made = True
 
     # Удаляем диски, которых больше нет в vCenter
     for disk_name, disk in existing_disks.items():
         if disk_name not in vcenter_disk_names:
             disk.delete()
+            changes_made = True
+
+    return changes_made
 
 
 @transaction.atomic
@@ -452,6 +465,9 @@ def apply_changes(
                 vm.custom_field_data['creation_date'] = vm_data.get('creation_date')
                 vm.save()
 
+                # Синхронизируем диски для только что созданной VM
+                sync_vm_disks(vm, vm_data.get('disks', []))
+
                 result.created += 1
 
                 # Логируем каждую 10-ую VM или последнюю
@@ -509,6 +525,12 @@ def apply_changes(
                 vm.save()
                 # NetBox автоматически создаст ObjectChange запись
 
+                # Синхронизируем диски для обновленной VM
+                # Находим данные VM из vCenter для получения информации о дисках
+                vm_data = next((v for v in vcenter_vms if v['name'] == vm.name), None)
+                if vm_data:
+                    sync_vm_disks(vm, vm_data.get('disks', []))
+
                 result.updated += 1
 
                 # Логируем каждую 10-ую VM или последнюю
@@ -523,10 +545,33 @@ def apply_changes(
         if logger:
             logger.info(f"  ✓ Обновлено VM: {result.updated}")
 
+    # Синхронизация дисков для VM без изменений
+    # Это не создаст записи об изменении, если диски не изменились
+    if diff.to_skip:
+        if logger:
+            logger.info(f"  → Синхронизация дисков для {len(diff.to_skip)} VM без изменений...")
+
+        for idx, vm in enumerate(diff.to_skip, 1):
+            try:
+                # Находим данные VM из vCenter для получения информации о дисках
+                vm_data = next((v for v in vcenter_vms if v['name'] == vm.name), None)
+                if vm_data:
+                    # Синхронизируем диски (изменения будут только если диски реально изменились)
+                    sync_vm_disks(vm, vm_data.get('disks', []))
+
+                # Логируем каждую 100-ую VM или последнюю (для неизмененных реже логируем)
+                if logger and (idx % 100 == 0 or idx == len(diff.to_skip)):
+                    logger.info(f"    ✓ Проверено дисков: {idx}/{len(diff.to_skip)} VM")
+
+            except Exception as e:
+                result.errors.append(f"Ошибка синхронизации дисков для VM '{vm.name}': {str(e)}")
+                if logger:
+                    logger.error(f"    ✗ Ошибка синхронизации дисков '{vm.name}'")
+
     # Подсчет неизмененных
     result.unchanged = len(diff.to_skip)
     if logger and result.unchanged > 0:
-        logger.info(f"  → Без изменений: {result.unchanged} VM")
+        logger.info(f"  ✓ Без изменений: {result.unchanged} VM")
 
     # Пометка отсутствующих VM статусом failed
     missing_ids = [vm.id for vm in diff.to_mark_missing]
@@ -559,38 +604,6 @@ def apply_changes(
             result.errors.append(f"Ошибка пометки отсутствующих VM: {str(e)}")
             if logger:
                 logger.error(f"  ✗ Ошибка пометки отсутствующих VM")
-
-    # Синхронизация дисков для всех VM из vCenter
-    # Создаем словарь для быстрого поиска VM данных по имени
-    vcenter_vms_dict = {vm_data['name']: vm_data for vm_data in vcenter_vms}
-
-    # Получаем все VM из ClusterGroup для синхронизации дисков
-    all_cluster_group_vms = VirtualMachine.objects.filter(cluster__group=cluster_group)
-
-    total_vms = all_cluster_group_vms.count()
-    if total_vms > 0:
-        if logger:
-            logger.info(f"  → Синхронизация дисков для {total_vms} VM...")
-
-        for idx, vm in enumerate(all_cluster_group_vms, 1):
-            try:
-                # Находим данные ВМ из vCenter
-                vm_data = vcenter_vms_dict.get(vm.name)
-                if vm_data:
-                    # Синхронизируем диски
-                    sync_vm_disks(vm, vm_data.get('disks', []))
-
-                # Логируем каждую 10-ую VM или последнюю
-                if logger and (idx % 10 == 0 or idx == total_vms):
-                    logger.info(f"    ✓ Синхронизировано {idx}/{total_vms} VM")
-
-            except Exception as e:
-                result.errors.append(f"Ошибка синхронизации дисков для VM '{vm.name}': {str(e)}")
-                if logger:
-                    logger.error(f"    ✗ Ошибка синхронизации дисков '{vm.name}'")
-
-        if logger:
-            logger.info(f"  ✓ Синхронизация дисков завершена")
 
     result.total_processed = len(diff.to_create) + len(diff.to_update) + len(diff.to_skip)
 
