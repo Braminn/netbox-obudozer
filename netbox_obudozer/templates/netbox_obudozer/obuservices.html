@@ -15,7 +15,7 @@
                 </tr>
                 <tr>
                     <th scope="row">Описание</th>
-                    <td>{{ object.description|render_markdown|placeholder }}</td>
+                    <td>{{ object.description|placeholder }}</td>
                 </tr>
             </table>
         </div>
@@ -33,11 +33,11 @@
             <table class="table table-hover attr-table">
                 <tr>
                     <th scope="row">Создано</th>
-                    <td>{{ object.created|annotated_date }}</td>
+                    <td>{{ object.created }}</td>
                 </tr>
                 <tr>
                     <th scope="row">Последнее изменение</th>
-                    <td>{{ object.last_updated|annotated_date }}</td>
+                    <td>{{ object.last_updated }}</td>
                 </tr>
             </table>
         </div>
