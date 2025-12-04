@@ -22,6 +22,7 @@ from .jobs import VCenterSyncJob
 from .models import ObuServices
 from .tables import ObuServicesTable
 from .forms import ObuServicesForm, ObuServicesBulkEditForm
+from .filtersets import ObuServicesFilterSet
 
 
 @permission_required('virtualization.add_virtualmachine')
@@ -79,6 +80,7 @@ class ObuServicesListView(ObjectListView):
     """
     queryset = ObuServices.objects.all()
     table = ObuServicesTable
+    filterset = ObuServicesFilterSet
 
 
 @register_model_view(ObuServices)
