@@ -1,19 +1,27 @@
 """
 Views (представления) плагина netbox_obudozer
 
-Содержит функцию синхронизации с vCenter.
-CRUD операции для VirtualMachine используют стандартные NetBox views.
+Содержит функцию синхронизации с vCenter и полный CRUD для услуг OBU.
 """
 from django.shortcuts import render
 from django.contrib.auth.decorators import permission_required
 from django.http import JsonResponse
 
-from netbox.views.generic import ObjectListView
+from netbox.views.generic import (
+    ObjectListView,
+    ObjectDetailView,
+    ObjectCreateView,
+    ObjectEditView,
+    ObjectDeleteView,
+    BulkEditView,
+    BulkDeleteView,
+)
 
 from .sync import get_sync_status
 from .jobs import VCenterSyncJob
 from .models import ObuServices
 from .tables import ObuServicesTable
+from .forms import ObuServicesForm
 
 
 @permission_required('virtualization.add_virtualmachine')
@@ -66,6 +74,70 @@ class ObuServicesListView(ObjectListView):
     - Сортировку
     - Базовый поиск (если определен filterset)
     - Экспорт данных
+    - Кнопки действий (Create, Edit, Delete, BulkEdit, BulkDelete)
+    """
+    queryset = ObuServices.objects.all()
+    table = ObuServicesTable
+
+
+class ObuServicesDetailView(ObjectDetailView):
+    """
+    Представление для просмотра деталей услуги OBU.
+
+    Отображает полную информацию о конкретной услуге,
+    включая пользовательские поля и теги.
+    """
+    queryset = ObuServices.objects.all()
+
+
+class ObuServicesCreateView(ObjectCreateView):
+    """
+    Представление для создания новой услуги OBU.
+    """
+    queryset = ObuServices.objects.all()
+    form_class = ObuServicesForm
+    default_return_url = 'plugins:netbox_obudozer:obuservices_list'
+
+
+class ObuServicesEditView(ObjectEditView):
+    """
+    Представление для редактирования услуги OBU.
+
+    Позволяет изменять все поля услуги, включая пользовательские поля и теги.
+    Все изменения автоматически логируются через ObjectChange.
+    """
+    queryset = ObuServices.objects.all()
+    form_class = ObuServicesForm
+    default_return_url = 'plugins:netbox_obudozer:obuservices_list'
+
+
+class ObuServicesDeleteView(ObjectDeleteView):
+    """
+    Представление для удаления услуги OBU.
+
+    Запрашивает подтверждение перед удалением и отображает
+    все связанные объекты, которые также будут удалены.
+    """
+    queryset = ObuServices.objects.all()
+    default_return_url = 'plugins:netbox_obudozer:obuservices_list'
+
+
+class ObuServicesBulkEditView(BulkEditView):
+    """
+    Представление для массового редактирования услуг OBU.
+
+    Позволяет одновременно изменять выбранные услуги.
+    """
+    queryset = ObuServices.objects.all()
+    table = ObuServicesTable
+    form_class = ObuServicesForm
+
+
+class ObuServicesBulkDeleteView(BulkDeleteView):
+    """
+    Представление для массового удаления услуг OBU.
+
+    Позволяет одновременно удалить несколько выбранных услуг.
     """
     queryset = ObuServices.objects.all()
     table = ObuServicesTable

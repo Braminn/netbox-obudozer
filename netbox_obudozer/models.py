@@ -40,6 +40,6 @@ class ObuServices(NetBoxModel):
         return self.name
 
     def get_absolute_url(self):
-        """URL для просмотра деталей услуги (пока не реализовано)."""
+        """URL для просмотра деталей услуги."""
         from django.urls import reverse
-        return reverse('plugins:netbox_obudozer:obuservices_list')
+        return reverse('plugins:netbox_obudozer:obuservices', kwargs={'pk': self.pk})

@@ -17,7 +17,7 @@ class ObuServicesTable(NetBoxTable):
     """
 
     name = tables.Column(
-        linkify=False,  # Пока нет detail view, не делаем ссылку
+        linkify=True,  # Ссылка на detail view
         verbose_name='Название услуги'
     )
 
