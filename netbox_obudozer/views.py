@@ -21,7 +21,7 @@ from .sync import get_sync_status
 from .jobs import VCenterSyncJob
 from .models import ObuServices
 from .tables import ObuServicesTable
-from .forms import ObuServicesForm
+from .forms import ObuServicesForm, ObuServicesBulkEditForm
 
 
 @permission_required('virtualization.add_virtualmachine')
@@ -125,7 +125,7 @@ class ObuServicesBulkEditView(BulkEditView):
     """
     queryset = ObuServices.objects.all()
     table = ObuServicesTable
-    form = ObuServicesForm
+    form = ObuServicesBulkEditForm
 
 
 @register_model_view(ObuServices, 'bulk_delete', detail=False)
