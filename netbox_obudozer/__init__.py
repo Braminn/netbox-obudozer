@@ -19,6 +19,7 @@ class ObudozerPluginConfig(PluginConfig):
     author = 'Stegantsev Victor'
     author_email = 'your.email@example.com'
     base_url = 'obudozer'
+    api_urls = 'api.urls'  # Регистрация REST API URLs
     required_settings = []
     default_settings = {
         # Настройки подключения к vCenter (будут использоваться при реальной интеграции)
