@@ -94,8 +94,7 @@ class ObuServicesCreateView(ObjectEditView):
     Представление для создания новой услуги OBU.
     """
     queryset = ObuServices.objects.all()
-    form_class = ObuServicesForm
-    default_return_url = 'plugins:netbox_obudozer:obuservices_list'
+    form = ObuServicesForm
 
 
 class ObuServicesEditView(ObjectEditView):
@@ -106,8 +105,7 @@ class ObuServicesEditView(ObjectEditView):
     Все изменения автоматически логируются через ObjectChange.
     """
     queryset = ObuServices.objects.all()
-    form_class = ObuServicesForm
-    default_return_url = 'plugins:netbox_obudozer:obuservices_list'
+    form = ObuServicesForm
 
 
 class ObuServicesDeleteView(ObjectDeleteView):
@@ -118,7 +116,6 @@ class ObuServicesDeleteView(ObjectDeleteView):
     все связанные объекты, которые также будут удалены.
     """
     queryset = ObuServices.objects.all()
-    default_return_url = 'plugins:netbox_obudozer:obuservices_list'
 
 
 class ObuServicesBulkEditView(BulkEditView):
@@ -129,7 +126,7 @@ class ObuServicesBulkEditView(BulkEditView):
     """
     queryset = ObuServices.objects.all()
     table = ObuServicesTable
-    form_class = ObuServicesForm
+    form = ObuServicesForm
 
 
 class ObuServicesBulkDeleteView(BulkDeleteView):
