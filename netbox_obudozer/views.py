@@ -9,8 +9,7 @@ from django.http import JsonResponse
 
 from netbox.views.generic import (
     ObjectListView,
-    ObjectDetailView,
-    ObjectCreateView,
+    ObjectView,  # Используется для detail view
     ObjectEditView,
     ObjectDeleteView,
     BulkEditView,
@@ -80,7 +79,7 @@ class ObuServicesListView(ObjectListView):
     table = ObuServicesTable
 
 
-class ObuServicesDetailView(ObjectDetailView):
+class ObuServicesDetailView(ObjectView):
     """
     Представление для просмотра деталей услуги OBU.
 
@@ -90,7 +89,7 @@ class ObuServicesDetailView(ObjectDetailView):
     queryset = ObuServices.objects.all()
 
 
-class ObuServicesCreateView(ObjectCreateView):
+class ObuServicesCreateView(ObjectEditView):
     """
     Представление для создания новой услуги OBU.
     """
