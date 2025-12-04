@@ -9,12 +9,13 @@ from django.http import JsonResponse
 
 from netbox.views.generic import (
     ObjectListView,
-    ObjectView,  # Используется для detail view
+    ObjectView,
     ObjectEditView,
     ObjectDeleteView,
     BulkEditView,
     BulkDeleteView,
 )
+from utilities.views import register_model_view
 
 from .sync import get_sync_status
 from .jobs import VCenterSyncJob
@@ -64,6 +65,7 @@ def sync_vcenter_view(request):
     })
 
 
+@register_model_view(ObuServices, 'list', detail=False)
 class ObuServicesListView(ObjectListView):
     """
     Представление для отображения списка услуг OBU.
@@ -79,6 +81,7 @@ class ObuServicesListView(ObjectListView):
     table = ObuServicesTable
 
 
+@register_model_view(ObuServices)
 class ObuServicesDetailView(ObjectView):
     """
     Представление для просмотра деталей услуги OBU.
@@ -89,25 +92,20 @@ class ObuServicesDetailView(ObjectView):
     queryset = ObuServices.objects.all()
 
 
-class ObuServicesCreateView(ObjectEditView):
-    """
-    Представление для создания новой услуги OBU.
-    """
-    queryset = ObuServices.objects.all()
-    form = ObuServicesForm
-
-
+@register_model_view(ObuServices, 'add', detail=False)
+@register_model_view(ObuServices, 'edit')
 class ObuServicesEditView(ObjectEditView):
     """
-    Представление для редактирования услуги OBU.
+    Представление для создания и редактирования услуг OBU.
 
-    Позволяет изменять все поля услуги, включая пользовательские поля и теги.
-    Все изменения автоматически логируются через ObjectChange.
+    Используется как для создания новых услуг (add), так и для редактирования
+    существующих (edit). NetBox автоматически определяет режим по наличию pk.
     """
     queryset = ObuServices.objects.all()
     form = ObuServicesForm
 
 
+@register_model_view(ObuServices, 'delete')
 class ObuServicesDeleteView(ObjectDeleteView):
     """
     Представление для удаления услуги OBU.
@@ -118,6 +116,7 @@ class ObuServicesDeleteView(ObjectDeleteView):
     queryset = ObuServices.objects.all()
 
 
+@register_model_view(ObuServices, 'bulk_edit', detail=False)
 class ObuServicesBulkEditView(BulkEditView):
     """
     Представление для массового редактирования услуг OBU.
@@ -129,6 +128,7 @@ class ObuServicesBulkEditView(BulkEditView):
     form = ObuServicesForm
 
 
+@register_model_view(ObuServices, 'bulk_delete', detail=False)
 class ObuServicesBulkDeleteView(BulkDeleteView):
     """
     Представление для массового удаления услуг OBU.

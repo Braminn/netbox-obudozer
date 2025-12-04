@@ -1,61 +1,19 @@
 """
 URL маршруты плагина netbox_obudozer
 
-Определяет URL endpoints для синхронизации с vCenter и CRUD операций для услуг OBU.
+Использует NetBox-специфичные утилиты для автоматической генерации URL patterns.
 """
-from django.urls import path
+from django.urls import include, path
+from utilities.urls import get_model_urls
 from . import views
 
 urlpatterns = [
     # Синхронизация с vCenter
     path('sync-vcenter/', views.sync_vcenter_view, name='sync_vcenter'),
 
-    # Список услуг OBU
-    path(
-        'obu-services/',
-        views.ObuServicesListView.as_view(),
-        name='obuservices_list'
-    ),
+    # Автоматическая генерация URL для ObuServices (list, add, bulk_edit, bulk_delete)
+    path('obu-services/', include(get_model_urls('netbox_obudozer', 'obuservices', detail=False))),
 
-    # Создание новой услуги
-    path(
-        'obu-services/add/',
-        views.ObuServicesCreateView.as_view(),
-        name='obuservices_add'
-    ),
-
-    # Просмотр деталей услуги
-    path(
-        'obu-services/<int:pk>/',
-        views.ObuServicesDetailView.as_view(),
-        name='obuservices'
-    ),
-
-    # Редактирование услуги
-    path(
-        'obu-services/<int:pk>/edit/',
-        views.ObuServicesEditView.as_view(),
-        name='obuservices_edit'
-    ),
-
-    # Удаление услуги
-    path(
-        'obu-services/<int:pk>/delete/',
-        views.ObuServicesDeleteView.as_view(),
-        name='obuservices_delete'
-    ),
-
-    # Массовое редактирование
-    path(
-        'obu-services/edit/',
-        views.ObuServicesBulkEditView.as_view(),
-        name='obuservices_bulk_edit'
-    ),
-
-    # Массовое удаление
-    path(
-        'obu-services/delete/',
-        views.ObuServicesBulkDeleteView.as_view(),
-        name='obuservices_bulk_delete'
-    ),
+    # Автоматическая генерация URL для ObuServices (detail, edit, delete)
+    path('obu-services/<int:pk>/', include(get_model_urls('netbox_obudozer', 'obuservices'))),
 ]
