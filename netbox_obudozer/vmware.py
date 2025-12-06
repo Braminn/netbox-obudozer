@@ -212,8 +212,13 @@ def _extract_disk_info(devices):
     """
     Извлекает информацию о виртуальных дисках из списка устройств ВМ.
 
-    Использует capacityInBytes (рекомендовано VMware с vSphere API 5.5+)
-    для получения точного размера выделенного диска (Capacity).
+    Использует capacityInBytes (рекомендовано VMware с vSphere API 5.5+).
+    Конвертирует из бинарных единиц (base-2) в десятичные (base-10) для соответствия vCenter UI.
+
+    Формула: capacityInBytes / 1024^3 * 1000
+    - VMware API возвращает в бинарных единицах (1 GiB = 1024 MiB)
+    - vCenter UI отображает в десятичных единицах (1 GB = 1000 MB)
+    - Пример: 40 GB в vCenter = 42949672960 bytes → 40000 MB
 
     Args:
         devices: Список устройств vim.vm.device (из config.hardware.device)
@@ -221,7 +226,7 @@ def _extract_disk_info(devices):
     Returns:
         List[Dict]: Список словарей с данными о дисках:
             - name (str): Метка диска (например, "Hard disk 1")
-            - size_mb (int): Размер диска в мегабайтах (из capacityInBytes)
+            - size_mb (int): Размер диска в мегабайтах (десятичные, как в vCenter UI)
             - type (str): Тип бэкенда диска (например, "FlatVer2")
             - thin_provisioned (bool): Thin provisioning (True) или thick (False)
             - file_name (str): Путь к файлу диска на datastore (например, "[datastore1] vm/vm.vmdk")
@@ -230,8 +235,8 @@ def _extract_disk_info(devices):
         >>> disks = _extract_disk_info(vm.config.hardware.device)
         >>> for disk in disks:
         ...     print(f"{disk['name']}: {disk['size_mb']} MB, File: {disk['file_name']}")
-        Hard disk 1: 51200 MB, File: [datastore1] vm01/vm01.vmdk
-        Hard disk 2: 102400 MB, File: [datastore1] vm01/vm01_1.vmdk
+        Hard disk 1: 40000 MB, File: [datastore1] vm01/vm01.vmdk
+        Hard disk 2: 100000 MB, File: [datastore1] vm01/vm01_1.vmdk
     """
     disks = []
 
@@ -244,8 +249,13 @@ def _extract_disk_info(devices):
             if type(device).__name__ == 'vim.vm.device.VirtualDisk':
                 try:
                     # Извлекаем информацию о диске
-                    # Используем capacityInBytes (рекомендовано для vSphere 5.5+, обязательно для vCenter 7+)
-                    size_mb = round(device.capacityInBytes / (1024 * 1024)) if hasattr(device, 'capacityInBytes') else 0
+                    # VMware API возвращает в бинарных единицах (base-2), но vCenter UI показывает в десятичных (base-10)
+                    # Конвертируем: Bytes → GB (бинарные) → MB (десятичные) для соответствия vCenter UI
+                    # Формула: capacityInBytes / 1024^3 * 1000 (аналогично netbox-sync)
+                    if hasattr(device, 'capacityInBytes') and device.capacityInBytes:
+                        size_mb = int(device.capacityInBytes / 1024 / 1024 / 1024 * 1000)
+                    else:
+                        size_mb = 0
 
                     disk_info = {
                         'name': device.deviceInfo.label if hasattr(device.deviceInfo, 'label') else 'Unknown',
