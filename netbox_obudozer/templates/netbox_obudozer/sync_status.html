@@ -431,35 +431,33 @@
         const hasStats = stats.created > 0 || stats.updated > 0 || stats.unchanged > 0;
         if (hasStats) {
             message += '<br><br>';
-            message += `<div class="row">`;
-            message += `<div class="col-md-3 text-center"><strong>${stats.created}</strong><br><small class="text-muted">Создано</small></div>`;
-            message += `<div class="col-md-3 text-center"><strong>${stats.updated}</strong><br><small class="text-muted">Обновлено</small></div>`;
-            message += `<div class="col-md-3 text-center"><strong>${stats.unchanged}</strong><br><small class="text-muted">Без изменений</small></div>`;
+            message += `<ul class="mb-0" style="list-style: none; padding-left: 0;">`;
+            message += `<li><strong>Создано:</strong> ${stats.created}</li>`;
+            message += `<li><strong>Обновлено:</strong> ${stats.updated}</li>`;
+            message += `<li><strong>Без изменений:</strong> ${stats.unchanged}</li>`;
             if (stats.marked_missing > 0) {
-                message += `<div class="col-md-3 text-center"><strong>${stats.marked_missing}</strong><br><small class="text-muted">Недоступных</small></div>`;
+                message += `<li><strong>Помечено недоступными:</strong> ${stats.marked_missing}</li>`;
             }
-            message += `</div>`;
             if (stats.duration > 0) {
-                message += `<div class="mt-3 text-center"><small>Длительность: <strong>${stats.duration.toFixed(2)} сек</strong></small></div>`;
+                message += `<li class="mt-2"><strong>Длительность:</strong> ${stats.duration.toFixed(2)} сек</li>`;
             }
+            message += `</ul>`;
         }
 
         // Создаем уведомление (стандартный NetBox alert)
         const alertDiv = document.createElement('div');
-        alertDiv.className = `alert alert-${alertType} alert-dismissible fade show`;
+        alertDiv.className = `alert alert-${alertType} alert-dismissible fade show mt-3`;
         alertDiv.setAttribute('role', 'alert');
         alertDiv.innerHTML = `
             <i class="mdi mdi-${icon}"></i> ${message}
             <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
         `;
 
-        // Вставляем в начало страницы (как стандартные NetBox уведомления)
-        const mainContent = document.querySelector('main') || document.querySelector('.container-fluid');
-        if (mainContent) {
-            mainContent.insertBefore(alertDiv, mainContent.firstChild);
-            // Прокручиваем к началу страницы, чтобы показать уведомление
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-        }
+        // Вставляем в начало контейнера прогресса
+        progressContainer.insertBefore(alertDiv, progressContainer.firstChild);
+
+        // Прокручиваем к уведомлению
+        alertDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
 })();
 </script>
