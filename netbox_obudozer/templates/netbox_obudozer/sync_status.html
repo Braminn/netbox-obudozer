@@ -444,20 +444,22 @@
             }
         }
 
-        // Создаем уведомление
+        // Создаем уведомление (стандартный NetBox alert)
         const alertDiv = document.createElement('div');
-        alertDiv.className = `alert alert-${alertType} alert-dismissible fade show mt-3`;
+        alertDiv.className = `alert alert-${alertType} alert-dismissible fade show`;
         alertDiv.setAttribute('role', 'alert');
         alertDiv.innerHTML = `
             <i class="mdi mdi-${icon}"></i> ${message}
             <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
         `;
 
-        // Вставляем в начало контейнера прогресса
-        progressContainer.insertBefore(alertDiv, progressContainer.firstChild);
-
-        // Прокручиваем к уведомлению
-        alertDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        // Вставляем в начало страницы (как стандартные NetBox уведомления)
+        const mainContent = document.querySelector('main') || document.querySelector('.container-fluid');
+        if (mainContent) {
+            mainContent.insertBefore(alertDiv, mainContent.firstChild);
+            // Прокручиваем к началу страницы, чтобы показать уведомление
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
     }
 })();
 </script>
