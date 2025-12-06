@@ -212,13 +212,16 @@ def _extract_disk_info(devices):
     """
     Извлекает информацию о виртуальных дисках из списка устройств ВМ.
 
+    Использует capacityInBytes (рекомендовано VMware с vSphere API 5.5+)
+    для получения точного размера выделенного диска (Capacity).
+
     Args:
         devices: Список устройств vim.vm.device (из config.hardware.device)
 
     Returns:
         List[Dict]: Список словарей с данными о дисках:
             - name (str): Метка диска (например, "Hard disk 1")
-            - size_mb (int): Размер диска в мегабайтах
+            - size_mb (int): Размер диска в мегабайтах (из capacityInBytes)
             - type (str): Тип бэкенда диска (например, "FlatVer2")
             - thin_provisioned (bool): Thin provisioning (True) или thick (False)
             - file_name (str): Путь к файлу диска на datastore (например, "[datastore1] vm/vm.vmdk")
@@ -241,9 +244,12 @@ def _extract_disk_info(devices):
             if type(device).__name__ == 'vim.vm.device.VirtualDisk':
                 try:
                     # Извлекаем информацию о диске
+                    # Используем capacityInBytes (рекомендовано для vSphere 5.5+, обязательно для vCenter 7+)
+                    size_mb = round(device.capacityInBytes / (1024 * 1024)) if hasattr(device, 'capacityInBytes') else 0
+
                     disk_info = {
                         'name': device.deviceInfo.label if hasattr(device.deviceInfo, 'label') else 'Unknown',
-                        'size_mb': int(device.capacityInKB / 1024) if hasattr(device, 'capacityInKB') else 0,
+                        'size_mb': size_mb,
                     }
 
                     # Получаем тип бэкенда, thin provisioning и путь к файлу
