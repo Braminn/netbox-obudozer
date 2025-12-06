@@ -9,6 +9,7 @@
 Использует встроенный NetBox механизм логирования изменений через ObjectChange.
 """
 from typing import Dict, List, Tuple
+from datetime import datetime
 from django.db import transaction
 from django.utils import timezone
 from django.contrib.contenttypes.models import ContentType
@@ -74,19 +75,59 @@ class SyncResult:
 class VMDiff:
     """
     Вычисление различий между данными vCenter и NetBox.
-    
+
     Attributes:
         to_create: VM которые нужно создать
         to_update: VM которые нужно обновить (VM, изменения)
         to_skip: VM без изменений
         to_mark_missing: VM которые нужно пометить как отсутствующие
     """
-    
+
     def __init__(self):
         self.to_create: List[Dict] = []
         self.to_update: List[Tuple[VirtualMachine, Dict]] = []
         self.to_skip: List[VirtualMachine] = []
         self.to_mark_missing: List[VirtualMachine] = []
+
+
+def _normalize_datetime_for_comparison(value):
+    """
+    Нормализует datetime значение для корректного сравнения.
+
+    Конвертирует как datetime объекты, так и ISO строки в datetime объекты,
+    округленные до секунд. Это позволяет корректно сравнивать значения
+    независимо от того, как они хранятся (datetime объект или строка).
+
+    Args:
+        value: datetime объект, ISO строка или None
+
+    Returns:
+        datetime объект округленный до секунд, или None
+
+    Example:
+        >>> dt1 = datetime(2024, 8, 20, 11, 19, 53, 244559)
+        >>> dt2 = '2024-08-20 11:19:53.244559+00:00'
+        >>> _normalize_datetime_for_comparison(dt1) == _normalize_datetime_for_comparison(dt2)
+        True
+    """
+    if value is None:
+        return None
+
+    # Если это уже datetime объект
+    if isinstance(value, datetime):
+        return value.replace(microsecond=0)
+
+    # Если это строка - парсим
+    if isinstance(value, str):
+        try:
+            # Заменяем 'Z' на '+00:00' для правильного парсинга ISO формата
+            dt = datetime.fromisoformat(value.replace('Z', '+00:00'))
+            return dt.replace(microsecond=0)
+        except (ValueError, AttributeError):
+            # Если не удалось парсить, возвращаем как есть
+            return value
+
+    return value
 
 
 def get_field_changes(vm: VirtualMachine, vcenter_data: Dict, cluster_group_name: str) -> Dict:
@@ -215,6 +256,11 @@ def get_field_changes(vm: VirtualMachine, vcenter_data: Dict, cluster_group_name
     for field_name in os_fields:
         current_value = vm.custom_field_data.get(field_name) if vm.custom_field_data else None
         new_value = vcenter_data.get(field_name)
+
+        # Специальная обработка для datetime полей
+        if field_name == 'creation_date':
+            current_value = _normalize_datetime_for_comparison(current_value)
+            new_value = _normalize_datetime_for_comparison(new_value)
 
         if current_value != new_value:
             changes[field_name] = {
