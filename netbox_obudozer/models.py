@@ -3,6 +3,7 @@
 
 Определяет модели для хранения бизнес-услуг.
 """
+from django.contrib.contenttypes.fields import GenericRelation
 from django.db import models
 from netbox.models import NetBoxModel
 from virtualization.models import VirtualMachine
@@ -54,6 +55,14 @@ class ObuServices(NetBoxModel):
         null=True,
         verbose_name='Дата окончания',
         help_text='Дата окончания оказания услуги'
+    )
+
+    # Reverse relation для ContactAssignment (GenericForeignKey)
+    contact_assignments = GenericRelation(
+        to='tenancy.ContactAssignment',
+        content_type_field='object_type',
+        object_id_field='object_id',
+        related_query_name='obuservice'
     )
 
     class Meta:
