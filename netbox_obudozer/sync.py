@@ -907,9 +907,14 @@ def sync_vcenter_vms(logger=None) -> SyncResult:
                 'required': False,
                 'ui_visible': 'always',
                 'ui_editable': 'no',  # Read-only, управляется через ServiceVMAssignment
-                'object_type': ContentType.objects.get_for_model(ObuServices),
             }
         )
+
+        # Устанавливаем related_object_type для multiobject поля
+        # Это делается отдельно, так как это ForeignKey, а не простое поле
+        if created or not obu_services_field.related_object_type:
+            obu_services_field.related_object_type = ContentType.objects.get_for_model(ObuServices)
+            obu_services_field.save()
 
         # Привязываем Custom Fields к VirtualMachine
         vm_content_type = ContentType.objects.get_for_model(VirtualMachine)
