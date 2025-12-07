@@ -18,6 +18,10 @@
                     <td>{{ object.description|placeholder }}</td>
                 </tr>
                 <tr>
+                    <th scope="row">Организация</th>
+                    <td>{{ object.tenant|linkify|placeholder }}</td>
+                </tr>
+                <tr>
                     <th scope="row">Количество VM</th>
                     <td>{{ object.vm_assignments.count }}</td>
                 </tr>
