@@ -5,6 +5,7 @@ API сериализаторы для плагина netbox_obudozer
 """
 from rest_framework import serializers
 from netbox.api.serializers import NetBoxModelSerializer
+from tenancy.api.serializers import NestedTenantSerializer
 from virtualization.models import VirtualMachine
 from ..models import ObuServices, ServiceVMAssignment
 
@@ -69,13 +70,15 @@ class ObuServicesSerializer(NetBoxModelSerializer):
         view_name='plugins-api:netbox_obudozer-api:obuservices-detail'
     )
 
+    tenant = NestedTenantSerializer(required=False, allow_null=True)
+
     # Добавить поле vm_count (будет аннотировано в ViewSet)
     vm_count = serializers.IntegerField(read_only=True, default=0)
 
     class Meta:
         model = ObuServices
         fields = (
-            'id', 'url', 'display', 'name', 'description',
+            'id', 'url', 'display', 'name', 'description', 'tenant',
             'vm_count',  # Новое поле
             'tags', 'custom_fields', 'created', 'last_updated',
         )

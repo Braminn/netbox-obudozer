@@ -21,6 +21,10 @@ class ObuServicesTable(NetBoxTable):
         verbose_name='Название услуги'
     )
 
+    tenant = columns.TenantColumn(
+        verbose_name='Организация'
+    )
+
     description = tables.Column(
         verbose_name='Описание'
     )
@@ -38,8 +42,8 @@ class ObuServicesTable(NetBoxTable):
 
     class Meta(NetBoxTable.Meta):
         model = ObuServices
-        fields = ('name', 'description', 'vm_count', 'created', 'last_updated')
-        default_columns = ('name', 'description', 'vm_count')
+        fields = ('name', 'tenant', 'description', 'vm_count', 'created', 'last_updated')
+        default_columns = ('name', 'tenant', 'description', 'vm_count')
 
     def render_vm_count(self, record):
         """Отображение количества назначенных VM."""

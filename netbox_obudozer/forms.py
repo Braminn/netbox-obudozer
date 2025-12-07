@@ -5,8 +5,9 @@
 """
 from django import forms
 from netbox.forms import NetBoxModelForm, NetBoxModelBulkEditForm
-from utilities.forms.fields import CommentField, DynamicModelMultipleChoiceField
+from utilities.forms.fields import CommentField, DynamicModelChoiceField, DynamicModelMultipleChoiceField
 from virtualization.models import VirtualMachine
+from tenancy.models import Tenant
 from .models import ObuServices, ServiceVMAssignment
 
 
@@ -20,6 +21,12 @@ class ObuServicesForm(NetBoxModelForm):
     - Стилизации Bootstrap/NetBox
     """
 
+    tenant = DynamicModelChoiceField(
+        queryset=Tenant.objects.all(),
+        required=False,
+        label='Организация'
+    )
+
     virtual_machines = DynamicModelMultipleChoiceField(
         queryset=VirtualMachine.objects.all(),
         required=False,
@@ -32,6 +39,7 @@ class ObuServicesForm(NetBoxModelForm):
         fields = [
             'name',
             'description',
+            'tenant',
             'virtual_machines',
             'tags',
         ]
@@ -78,6 +86,10 @@ class ObuServicesBulkEditForm(NetBoxModelBulkEditForm):
     - Обновление custom fields
     - Комментарии к изменениям
     """
+    tenant = DynamicModelChoiceField(
+        queryset=Tenant.objects.all(),
+        required=False
+    )
     description = forms.CharField(
         max_length=500,
         required=False,
@@ -86,4 +98,4 @@ class ObuServicesBulkEditForm(NetBoxModelBulkEditForm):
     comments = CommentField()
 
     model = ObuServices
-    nullable_fields = ['description']
+    nullable_fields = ['description', 'tenant']

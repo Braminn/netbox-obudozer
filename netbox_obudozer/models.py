@@ -32,6 +32,16 @@ class ObuServices(NetBoxModel):
         help_text='Подробное описание услуги'
     )
 
+    tenant = models.ForeignKey(
+        to='tenancy.Tenant',
+        on_delete=models.PROTECT,
+        related_name='+',
+        blank=True,
+        null=True,
+        verbose_name='Организация',
+        help_text='Организация-заказчик услуги'
+    )
+
     class Meta:
         ordering = ['name']
         verbose_name = 'Услуга OBU'
