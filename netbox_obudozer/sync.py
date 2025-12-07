@@ -894,13 +894,30 @@ def sync_vcenter_vms(logger=None) -> SyncResult:
             }
         )
 
+        # Custom field для отображения связанных OBU Services
+        # Lazy import чтобы избежать циклических зависимостей
+        from .models import ObuServices
+
+        obu_services_field, created = CustomField.objects.get_or_create(
+            name='obu_services',
+            defaults={
+                'label': 'OBU Services',
+                'type': 'multiobject',
+                'description': 'Услуги, к которым привязана виртуальная машина',
+                'required': False,
+                'ui_visible': 'always',
+                'ui_editable': 'no',  # Read-only, управляется через ServiceVMAssignment
+                'object_type': ContentType.objects.get_for_model(ObuServices),
+            }
+        )
+
         # Привязываем Custom Fields к VirtualMachine
         vm_content_type = ContentType.objects.get_for_model(VirtualMachine)
         for field in [vcenter_id_field, last_synced_field, vcenter_cluster_field, ip_address_field,
                       tools_status_field, vmtools_description_field, vmtools_version_number_field,
                       os_pretty_name_field, os_family_name_field, os_distro_name_field,
                       os_distro_version_field, os_kernel_version_field, os_bitness_field,
-                      creation_date_field]:
+                      creation_date_field, obu_services_field]:
             if vm_content_type not in field.object_types.all():
                 field.object_types.add(vm_content_type)
 

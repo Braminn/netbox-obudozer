@@ -11,6 +11,9 @@ urlpatterns = [
     # Синхронизация с vCenter
     path('sync-vcenter/', views.sync_vcenter_view, name='sync_vcenter'),
 
+    # Синхронизация custom field obu_services
+    path('sync-services-cf/', views.sync_services_cf_view, name='sync_services_cf'),
+
     # Автоматическая генерация URL для ObuServices (list, add, bulk_edit, bulk_delete)
     path('obu-services/', include(get_model_urls('netbox_obudozer', 'obuservices', detail=False))),
 

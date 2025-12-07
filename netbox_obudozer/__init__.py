@@ -43,10 +43,13 @@ class ObudozerPluginConfig(PluginConfig):
         Вызывается при инициализации плагина.
 
         Импортирует jobs.py для регистрации фоновых задач.
+        Импортирует signals.py для регистрации обработчиков сигналов.
         """
         super().ready()
         # Импортируем jobs для регистрации JobRunner
         from . import jobs  # noqa: F401
+        # Импортируем signals для регистрации обработчиков синхронизации
+        from . import signals  # noqa: F401
 
 
 config = ObudozerPluginConfig

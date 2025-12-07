@@ -147,6 +147,35 @@
         </div>
     </div>
 
+    <!-- Кнопка синхронизации Services Custom Field -->
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">
+                        <i class="mdi mdi-refresh"></i> Синхронизация Custom Field
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted">
+                        Обновляет custom field 'obu_services' для всех VM с привязанными сервисами.
+                        Используйте эту функцию после первого деплоя или если данные рассинхронизировались.
+                    </p>
+
+                    <form id="sync-cf-form" method="post" action="{% url 'plugins:netbox_obudozer:sync_services_cf' %}">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-secondary" id="sync-cf-button">
+                            <i class="mdi mdi-refresh"></i> Синхронизировать Custom Field
+                        </button>
+                    </form>
+
+                    <!-- Результат синхронизации -->
+                    <div id="sync-cf-result" class="mt-3" style="display: none;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Информация -->
     <div class="row mt-4">
         <div class="col-12">
@@ -458,6 +487,68 @@
 
         // Прокручиваем к уведомлению
         alertDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    // ========================================
+    // Обработка синхронизации custom field
+    // ========================================
+    const syncCfForm = document.getElementById('sync-cf-form');
+    const syncCfButton = document.getElementById('sync-cf-button');
+    const syncCfResult = document.getElementById('sync-cf-result');
+
+    if (syncCfForm) {
+        syncCfForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+
+            // Отключаем кнопку
+            syncCfButton.disabled = true;
+            syncCfButton.innerHTML = '<i class="mdi mdi-loading mdi-spin"></i> Синхронизация...';
+
+            // Получаем CSRF token
+            const csrfToken = syncCfForm.querySelector('[name=csrfmiddlewaretoken]').value;
+
+            // Отправляем AJAX запрос
+            fetch(syncCfForm.action, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'X-CSRFToken': csrfToken,
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    syncCfResult.className = 'alert alert-success mt-3';
+                    syncCfResult.innerHTML = `
+                        <i class="mdi mdi-check-circle"></i>
+                        <strong>Успешно!</strong> ${data.message}
+                    `;
+                } else {
+                    syncCfResult.className = 'alert alert-danger mt-3';
+                    syncCfResult.innerHTML = `
+                        <i class="mdi mdi-alert-circle"></i>
+                        <strong>Ошибка:</strong> ${data.error}
+                    `;
+                }
+                syncCfResult.style.display = 'block';
+
+                // Возвращаем кнопку в рабочее состояние
+                syncCfButton.disabled = false;
+                syncCfButton.innerHTML = '<i class="mdi mdi-refresh"></i> Синхронизировать Custom Field';
+            })
+            .catch(error => {
+                syncCfResult.className = 'alert alert-danger mt-3';
+                syncCfResult.innerHTML = `
+                    <i class="mdi mdi-alert-circle"></i>
+                    <strong>Ошибка:</strong> ${error.message}
+                `;
+                syncCfResult.style.display = 'block';
+
+                syncCfButton.disabled = false;
+                syncCfButton.innerHTML = '<i class="mdi mdi-refresh"></i> Синхронизировать Custom Field';
+            });
+        });
     }
 })();
 </script>

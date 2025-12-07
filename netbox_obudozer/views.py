@@ -67,6 +67,58 @@ def sync_vcenter_view(request):
     })
 
 
+@permission_required('virtualization.view_virtualmachine')
+def sync_services_cf_view(request):
+    """
+    View для синхронизации custom field obu_services.
+
+    Обновляет custom field 'obu_services' для всех VM с привязанными сервисами.
+    Используется для первичной инициализации после деплоя или ресинхронизации.
+
+    POST: Выполняет синхронизацию и возвращает JSON с результатом
+
+    Args:
+        request: HTTP request объект
+
+    Returns:
+        JsonResponse с результатом синхронизации
+    """
+    if request.method == 'POST':
+        try:
+            from virtualization.models import VirtualMachine
+            from .models import ServiceVMAssignment
+
+            # Получаем все VM с assignments
+            vms = VirtualMachine.objects.filter(
+                service_assignments__isnull=False
+            ).distinct()
+
+            updated = 0
+            for vm in vms:
+                service_ids = list(
+                    vm.service_assignments.values_list('service_id', flat=True)
+                    .order_by('service_id')
+                )
+                vm.custom_field_data['obu_services'] = service_ids
+                vm.save()
+                updated += 1
+
+            return JsonResponse({
+                'success': True,
+                'updated': updated,
+                'message': f'Обновлено {updated} VM с custom field obu_services'
+            })
+
+        except Exception as e:
+            return JsonResponse({
+                'success': False,
+                'error': str(e)
+            }, status=500)
+
+    # GET не поддерживается
+    return JsonResponse({'error': 'Method not allowed'}, status=405)
+
+
 @register_model_view(ObuServices, 'list', detail=False)
 class ObuServicesListView(ObjectListView):
     """
