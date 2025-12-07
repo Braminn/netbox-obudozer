@@ -70,9 +70,9 @@ def sync_vcenter_view(request):
 @permission_required('virtualization.view_virtualmachine')
 def sync_services_cf_view(request):
     """
-    View для синхронизации custom field obu_services.
+    View для синхронизации custom field obu_services и tenant.
 
-    Обновляет custom field 'obu_services' для всех VM с привязанными сервисами.
+    Обновляет custom field 'obu_services' и tenant для всех VM с привязанными сервисами.
     Используется для первичной инициализации после деплоя или ресинхронизации.
 
     POST: Выполняет синхронизацию и возвращает JSON с результатом
@@ -86,27 +86,46 @@ def sync_services_cf_view(request):
     if request.method == 'POST':
         try:
             from virtualization.models import VirtualMachine
-            from .models import ServiceVMAssignment
+            from .models import ServiceVMAssignment, ObuServices
 
             # Получаем все VM с assignments
             vms = VirtualMachine.objects.filter(
                 service_assignments__isnull=False
             ).distinct()
 
-            updated = 0
+            updated_cf = 0
+            updated_tenant = 0
+
             for vm in vms:
+                # Синхронизация custom field obu_services
                 service_ids = list(
                     vm.service_assignments.values_list('service_id', flat=True)
                     .order_by('service_id')
                 )
                 vm.custom_field_data['obu_services'] = service_ids
+                updated_cf += 1
+
+                # Синхронизация tenant от первой услуги с tenant
+                first_service_with_tenant = (
+                    vm.service_assignments
+                    .filter(service__tenant__isnull=False)
+                    .select_related('service__tenant')
+                    .first()
+                )
+
+                if first_service_with_tenant:
+                    vm.tenant = first_service_with_tenant.service.tenant
+                    updated_tenant += 1
+                else:
+                    vm.tenant = None
+
                 vm.save()
-                updated += 1
 
             return JsonResponse({
                 'success': True,
-                'updated': updated,
-                'message': f'Обновлено {updated} VM с custom field obu_services'
+                'updated_cf': updated_cf,
+                'updated_tenant': updated_tenant,
+                'message': f'Обновлено: {updated_cf} VM с custom field, {updated_tenant} VM с tenant'
             })
 
         except Exception as e:

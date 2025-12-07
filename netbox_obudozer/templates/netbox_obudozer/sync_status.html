@@ -153,19 +153,20 @@
             <div class="card">
                 <div class="card-header">
                     <h5 class="card-title mb-0">
-                        <i class="mdi mdi-refresh"></i> Синхронизация Custom Field
+                        <i class="mdi mdi-refresh"></i> Синхронизация Custom Field и Tenant
                     </h5>
                 </div>
                 <div class="card-body">
                     <p class="text-muted">
-                        Обновляет custom field 'obu_services' для всех VM с привязанными сервисами.
+                        Обновляет custom field 'obu_services' и tenant для всех VM с привязанными сервисами.
+                        Tenant автоматически проставляется от услуги к VM.
                         Используйте эту функцию после первого деплоя или если данные рассинхронизировались.
                     </p>
 
                     <form id="sync-cf-form" method="post" action="{% url 'plugins:netbox_obudozer:sync_services_cf' %}">
                         {% csrf_token %}
                         <button type="submit" class="btn btn-secondary" id="sync-cf-button">
-                            <i class="mdi mdi-refresh"></i> Синхронизировать Custom Field
+                            <i class="mdi mdi-refresh"></i> Синхронизировать Custom Field и Tenant
                         </button>
                     </form>
 
@@ -535,7 +536,7 @@
 
                 // Возвращаем кнопку в рабочее состояние
                 syncCfButton.disabled = false;
-                syncCfButton.innerHTML = '<i class="mdi mdi-refresh"></i> Синхронизировать Custom Field';
+                syncCfButton.innerHTML = '<i class="mdi mdi-refresh"></i> Синхронизировать Custom Field и Tenant';
             })
             .catch(error => {
                 syncCfResult.className = 'alert alert-danger mt-3';
@@ -546,7 +547,7 @@
                 syncCfResult.style.display = 'block';
 
                 syncCfButton.disabled = false;
-                syncCfButton.innerHTML = '<i class="mdi mdi-refresh"></i> Синхронизировать Custom Field';
+                syncCfButton.innerHTML = '<i class="mdi mdi-refresh"></i> Синхронизировать Custom Field и Tenant';
             });
         });
     }
