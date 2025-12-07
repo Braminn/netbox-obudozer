@@ -16,7 +16,7 @@ from netbox.views.generic import (
     BulkEditView,
     BulkDeleteView,
 )
-from utilities.views import register_model_view, ViewTab
+from utilities.views import register_model_view
 
 from .sync import get_sync_status
 from .jobs import VCenterSyncJob
@@ -213,47 +213,3 @@ class ObuServicesBulkDeleteView(BulkDeleteView):
     """
     queryset = ObuServices.objects.all()
     table = ObuServicesTable
-
-
-@register_model_view(ObuServices, name='contacts')
-class ObuServicesContactsView(ObjectView):
-    """
-    Представление для отображения контактов услуги OBU.
-
-    Показывает таблицу ContactAssignment, привязанных к данной услуге.
-    Позволяет просматривать назначенные контакты с их ролями, приоритетами
-    и контактной информацией.
-    """
-    queryset = ObuServices.objects.all()
-    template_name = 'netbox_obudozer/obuservices_contacts.html'
-
-    tab = ViewTab(
-        label='Контакты',
-        badge=lambda obj: obj.contact_assignments.count(),
-        permission='tenancy.view_contactassignment',
-        weight=500
-    )
-
-    def get_extra_context(self, request, instance):
-        """
-        Добавляет ContactAssignment в контекст шаблона.
-
-        Args:
-            request: HTTP request объект
-            instance: экземпляр ObuServices
-
-        Returns:
-            dict с дополнительным контекстом
-        """
-        from django.contrib.contenttypes.models import ContentType
-        from tenancy.models import ContactAssignment
-
-        content_type = ContentType.objects.get_for_model(ObuServices)
-        contact_assignments = ContactAssignment.objects.filter(
-            object_type=content_type,
-            object_id=instance.pk
-        ).select_related('contact', 'role')
-
-        return {
-            'contact_assignments': contact_assignments,
-        }
