@@ -21,7 +21,8 @@ class ObuServicesTable(NetBoxTable):
         verbose_name='Название услуги'
     )
 
-    tenant = columns.TenantColumn(
+    tenant = tables.Column(
+        linkify=True,
         verbose_name='Организация'
     )
 
