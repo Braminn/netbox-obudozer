@@ -6,18 +6,20 @@
 from django.contrib.contenttypes.fields import GenericRelation
 from django.db import models
 from netbox.models import NetBoxModel
+from netbox.models.features import ContactsMixin
 from virtualization.models import VirtualMachine
 
 
-class ObuServices(NetBoxModel):
+class ObuServices(ContactsMixin, NetBoxModel):
     """
     Модель для хранения бизнес-услуг.
 
-    Наследует от NetBoxModel для автоматического получения:
+    Наследует от ContactsMixin для поддержки контактов и от NetBoxModel для:
     - Истории изменений (ObjectChange)
     - Поддержки тегов (tags)
     - Пользовательских полей (custom_field_data)
     - Временных меток (created, last_updated)
+    - Поддержки контактов (ContactAssignment)
     """
 
     name = models.CharField(
