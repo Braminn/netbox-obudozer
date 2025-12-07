@@ -5,13 +5,14 @@
 """
 from django import forms
 from netbox.forms import NetBoxModelForm, NetBoxModelBulkEditForm
-from utilities.forms.fields import CommentField
-from .models import ObuServices
+from utilities.forms.fields import CommentField, DynamicModelMultipleChoiceField
+from virtualization.models import VirtualMachine
+from .models import ObuServices, ServiceVMAssignment
 
 
 class ObuServicesForm(NetBoxModelForm):
     """
-    Форма для создания и редактирования услуг OBU.
+    Форма для создания и редактирования услуг OBU с мультиселектом VM.
 
     Наследует от NetBoxModelForm для автоматического получения:
     - Поддержки пользовательских полей (custom fields)
@@ -19,13 +20,53 @@ class ObuServicesForm(NetBoxModelForm):
     - Стилизации Bootstrap/NetBox
     """
 
+    virtual_machines = DynamicModelMultipleChoiceField(
+        queryset=VirtualMachine.objects.all(),
+        required=False,
+        label='Виртуальные машины',
+        query_params={'status': 'active'}  # Только активные VM
+    )
+
     class Meta:
         model = ObuServices
         fields = [
             'name',
             'description',
+            'virtual_machines',
             'tags',
         ]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        # При редактировании - показать уже назначенные VM
+        if self.instance and self.instance.pk:
+            assigned_vms = VirtualMachine.objects.filter(
+                service_assignments__service=self.instance
+            )
+            self.initial['virtual_machines'] = assigned_vms
+
+    def save(self, commit=True):
+        """
+        Сохранение с обработкой M2M через промежуточную модель.
+
+        ВАЖНО: Для минималистичного решения допустимо переопределить save(),
+        но для более сложных случаев лучше использовать сигналы.
+        """
+        instance = super().save(commit=commit)
+
+        if commit:
+            # Удалить старые назначения
+            instance.vm_assignments.all().delete()
+
+            # Создать новые назначения
+            for vm in self.cleaned_data.get('virtual_machines', []):
+                ServiceVMAssignment.objects.create(
+                    service=instance,
+                    virtual_machine=vm
+                )
+
+        return instance
 
 
 class ObuServicesBulkEditForm(NetBoxModelBulkEditForm):

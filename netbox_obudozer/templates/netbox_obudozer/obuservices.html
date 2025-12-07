@@ -17,6 +17,10 @@
                     <th scope="row">Описание</th>
                     <td>{{ object.description|placeholder }}</td>
                 </tr>
+                <tr>
+                    <th scope="row">Количество VM</th>
+                    <td>{{ object.vm_assignments.count }}</td>
+                </tr>
             </table>
         </div>
 
@@ -40,6 +44,49 @@
                     <td>{{ object.last_updated }}</td>
                 </tr>
             </table>
+        </div>
+    </div>
+</div>
+
+<!-- Таблица VM -->
+<div class="row mt-3">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header"><strong>Виртуальные машины</strong></div>
+            {% if object.vm_assignments.all %}
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Имя VM</th>
+                        <th>Кластер</th>
+                        <th>Статус</th>
+                        <th>Примечания</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for assignment in object.vm_assignments.select_related %}
+                    <tr>
+                        <td>
+                            <a href="{{ assignment.virtual_machine.get_absolute_url }}">
+                                {{ assignment.virtual_machine.name }}
+                            </a>
+                        </td>
+                        <td>{{ assignment.virtual_machine.cluster|default:"-" }}</td>
+                        <td>
+                            <span class="badge badge-{{ assignment.virtual_machine.get_status_color }}">
+                                {{ assignment.virtual_machine.get_status_display }}
+                            </span>
+                        </td>
+                        <td>{{ assignment.notes|placeholder }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="card-body text-muted">
+                Нет привязанных виртуальных машин
+            </div>
+            {% endif %}
         </div>
     </div>
 </div>

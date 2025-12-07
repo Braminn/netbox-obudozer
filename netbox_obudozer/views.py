@@ -6,6 +6,7 @@ Views (представления) плагина netbox_obudozer
 from django.shortcuts import render
 from django.contrib.auth.decorators import permission_required
 from django.http import JsonResponse
+from django.db.models import Count
 
 from netbox.views.generic import (
     ObjectListView,
@@ -78,7 +79,9 @@ class ObuServicesListView(ObjectListView):
     - Экспорт данных
     - Кнопки действий (Create, Edit, Delete, BulkEdit, BulkDelete)
     """
-    queryset = ObuServices.objects.all()
+    queryset = ObuServices.objects.annotate(
+        vm_count=Count('vm_assignments')
+    )
     table = ObuServicesTable
     filterset = ObuServicesFilterSet
 

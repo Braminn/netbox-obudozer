@@ -3,9 +3,22 @@ API Views (ViewSets) для плагина netbox_obudozer
 
 Определяет REST API endpoints для моделей плагина.
 """
+from django.db.models import Count
+from rest_framework.viewsets import ModelViewSet
 from netbox.api.viewsets import NetBoxModelViewSet
-from ..models import ObuServices
-from .serializers import ObuServicesSerializer
+from ..models import ObuServices, ServiceVMAssignment
+from .serializers import ObuServicesSerializer, ServiceVMAssignmentSerializer
+
+
+class ServiceVMAssignmentViewSet(ModelViewSet):
+    """
+    ViewSet для ServiceVMAssignment.
+
+    ВАЖНО: Используем ModelViewSet (НЕ NetBoxModelViewSet), т.к.
+    ServiceVMAssignment не наследует от NetBoxModel.
+    """
+    queryset = ServiceVMAssignment.objects.select_related('service', 'virtual_machine')
+    serializer_class = ServiceVMAssignmentSerializer
 
 
 class ObuServicesViewSet(NetBoxModelViewSet):
@@ -25,5 +38,7 @@ class ObuServicesViewSet(NetBoxModelViewSet):
     - Bulk операции
     - Permissions
     """
-    queryset = ObuServices.objects.all()
+    queryset = ObuServices.objects.annotate(
+        vm_count=Count('vm_assignments')
+    )
     serializer_class = ObuServicesSerializer

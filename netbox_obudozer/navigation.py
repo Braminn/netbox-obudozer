@@ -11,22 +11,6 @@ from netbox.choices import ButtonColorChoices
 menu = PluginMenu(
     label='Obudozer',
     groups=(
-        ('vCenter', (
-            PluginMenuItem(
-                link='plugins:netbox_obudozer:sync_vcenter',
-                link_text='vCenter Sync',
-                permissions=['virtualization.add_virtualmachine'],
-                buttons=(
-                    PluginMenuButton(
-                        link='plugins:netbox_obudozer:sync_vcenter',
-                        title='Sync Now',
-                        icon_class='mdi mdi-sync',
-                        color=ButtonColorChoices.BLUE,
-                        permissions=['virtualization.add_virtualmachine']
-                    ),
-                )
-            ),
-        )),
         ('Услуги', (
             PluginMenuItem(
                 link='plugins:netbox_obudozer:obuservices_list',
@@ -39,6 +23,22 @@ menu = PluginMenu(
                         icon_class='mdi mdi-plus-thick',
                         color=ButtonColorChoices.GREEN,
                         permissions=['netbox_obudozer.add_obuservices']
+                    ),
+                )
+            ),
+        )),
+        ('vCenter', (
+            PluginMenuItem(
+                link='plugins:netbox_obudozer:sync_vcenter',
+                link_text='vCenter Sync',
+                permissions=['virtualization.add_virtualmachine'],
+                buttons=(
+                    PluginMenuButton(
+                        link='plugins:netbox_obudozer:sync_vcenter',
+                        title='Sync Now',
+                        icon_class='mdi mdi-sync',
+                        color=ButtonColorChoices.BLUE,
+                        permissions=['virtualization.add_virtualmachine']
                     ),
                 )
             ),
