@@ -5,7 +5,7 @@
 """
 from django import forms
 from netbox.forms import NetBoxModelForm, NetBoxModelBulkEditForm
-from utilities.forms.fields import CommentField, DynamicModelChoiceField, DynamicModelMultipleChoiceField
+from utilities.forms.fields import CommentField, DynamicModelChoiceField, DynamicModelMultipleChoiceField, DatePicker
 from virtualization.models import VirtualMachine
 from tenancy.models import Tenant
 from .models import ObuServices, ServiceVMAssignment
@@ -27,6 +27,16 @@ class ObuServicesForm(NetBoxModelForm):
         label='Организация'
     )
 
+    start_date = DatePicker(
+        required=False,
+        label='Дата начала'
+    )
+
+    end_date = DatePicker(
+        required=False,
+        label='Дата окончания'
+    )
+
     virtual_machines = DynamicModelMultipleChoiceField(
         queryset=VirtualMachine.objects.all(),
         required=False,
@@ -40,6 +50,8 @@ class ObuServicesForm(NetBoxModelForm):
             'name',
             'description',
             'tenant',
+            'start_date',
+            'end_date',
             'virtual_machines',
             'tags',
         ]
@@ -90,6 +102,12 @@ class ObuServicesBulkEditForm(NetBoxModelBulkEditForm):
         queryset=Tenant.objects.all(),
         required=False
     )
+    start_date = DatePicker(
+        required=False
+    )
+    end_date = DatePicker(
+        required=False
+    )
     description = forms.CharField(
         max_length=500,
         required=False,
@@ -98,4 +116,4 @@ class ObuServicesBulkEditForm(NetBoxModelBulkEditForm):
     comments = CommentField()
 
     model = ObuServices
-    nullable_fields = ['description', 'tenant']
+    nullable_fields = ['description', 'tenant', 'start_date', 'end_date']

@@ -77,6 +77,7 @@ class ObuServicesSerializer(NetBoxModelSerializer):
         model = ObuServices
         fields = (
             'id', 'url', 'display', 'name', 'description', 'tenant',
+            'start_date', 'end_date',
             'vm_count',  # Новое поле
             'tags', 'custom_fields', 'created', 'last_updated',
         )

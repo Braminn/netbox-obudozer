@@ -42,6 +42,20 @@ class ObuServices(NetBoxModel):
         help_text='Организация-заказчик услуги'
     )
 
+    start_date = models.DateField(
+        blank=True,
+        null=True,
+        verbose_name='Дата начала',
+        help_text='Дата начала оказания услуги'
+    )
+
+    end_date = models.DateField(
+        blank=True,
+        null=True,
+        verbose_name='Дата окончания',
+        help_text='Дата окончания оказания услуги'
+    )
+
     class Meta:
         ordering = ['name']
         verbose_name = 'Услуга OBU'
