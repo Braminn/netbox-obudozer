@@ -8,7 +8,7 @@ from setuptools import find_packages, setup
 
 setup(
     name='netbox-obudozer',
-    version='0.1.1',
+    version='0.2.0',
     description='Плагин управления ресурсами ЦОД с интеграцией VMware vCenter',
     long_description=open('README.md').read() if os.path.exists('README.md') else '',
     long_description_content_type='text/markdown',
