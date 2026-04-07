@@ -121,6 +121,17 @@ def sync_services_cf_view(request):
                 else:
                     vm.tenant = None
 
+                first_service_with_role = (
+                    vm.service_assignments
+                    .filter(service__vm_role__isnull=False)
+                    .select_related('service__vm_role')
+                    .first()
+                )
+                if first_service_with_role:
+                    vm.role = first_service_with_role.service.vm_role
+                else:
+                    vm.role = None
+
                 vm.save()
 
             # Сбрасываем has_obu_services у VM без сервисов

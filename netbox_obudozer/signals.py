@@ -98,4 +98,18 @@ def sync_tenant_on_assignment_change(sender, instance, **kwargs):
     else:
         vm.tenant = None
 
+    # Получаем первую услугу с vm_role (если есть)
+    first_service_with_role = (
+        ServiceVMAssignment.objects
+        .filter(virtual_machine=vm, service__vm_role__isnull=False)
+        .select_related('service__vm_role')
+        .first()
+    )
+
+    # Обновляем роль VM
+    if first_service_with_role:
+        vm.role = first_service_with_role.service.vm_role
+    else:
+        vm.role = None
+
     vm.save()

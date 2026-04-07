@@ -8,6 +8,7 @@ from netbox.forms import NetBoxModelForm, NetBoxModelBulkEditForm
 from utilities.forms.fields import CommentField, DynamicModelChoiceField, DynamicModelMultipleChoiceField
 from virtualization.models import VirtualMachine
 from tenancy.models import Tenant
+from dcim.models import DeviceRole
 from .models import ObuServices, ServiceVMAssignment
 
 
@@ -25,6 +26,12 @@ class ObuServicesForm(NetBoxModelForm):
         queryset=Tenant.objects.all(),
         required=False,
         label='Организация'
+    )
+
+    vm_role = DynamicModelChoiceField(
+        queryset=DeviceRole.objects.filter(vm_role=True),
+        required=False,
+        label='Роль VM'
     )
 
     start_date = forms.DateField(
@@ -52,6 +59,7 @@ class ObuServicesForm(NetBoxModelForm):
             'name',
             'description',
             'tenant',
+            'vm_role',
             'start_date',
             'end_date',
             'virtual_machines',

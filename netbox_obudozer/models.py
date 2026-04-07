@@ -8,6 +8,7 @@ from django.db import models
 from netbox.models import NetBoxModel
 from netbox.models.features import ContactsMixin
 from virtualization.models import VirtualMachine
+from dcim.models import DeviceRole
 
 
 class ObuServices(ContactsMixin, NetBoxModel):
@@ -43,6 +44,16 @@ class ObuServices(ContactsMixin, NetBoxModel):
         null=True,
         verbose_name='Организация',
         help_text='Организация-заказчик услуги'
+    )
+
+    vm_role = models.ForeignKey(
+        to=DeviceRole,
+        on_delete=models.PROTECT,
+        related_name='obu_services',
+        blank=True,
+        null=True,
+        verbose_name='Роль VM',
+        help_text='Роль, назначаемая виртуальным машинам этой услуги'
     )
 
     start_date = models.DateField(
