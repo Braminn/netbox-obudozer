@@ -124,14 +124,11 @@ def sync_services_cf_view(request):
                 vm.save()
 
             # Сбрасываем has_obu_services у VM без сервисов
-            vms_without = VirtualMachine.objects.exclude(id__in=vms_with_services_ids).filter(
-                custom_field_data__has_key='has_obu_services'
-            )
+            vms_without = VirtualMachine.objects.exclude(id__in=vms_with_services_ids)
             for vm in vms_without:
-                if vm.custom_field_data.get('has_obu_services'):
-                    vm.custom_field_data['has_obu_services'] = False
-                    vm.save()
-                    updated_flag += 1
+                vm.custom_field_data['has_obu_services'] = False
+                vm.save()
+                updated_flag += 1
 
             return JsonResponse({
                 'success': True,
