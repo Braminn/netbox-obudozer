@@ -34,8 +34,7 @@ class ObuServicesTable(NetBoxTable):
         verbose_name='Дата окончания'
     )
 
-    vm_role = tables.Column(
-        linkify=True,
+    vm_role = columns.ColoredLabelColumn(
         verbose_name='Роль сервиса'
     )
 
