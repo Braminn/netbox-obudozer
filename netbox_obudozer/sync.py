@@ -916,13 +916,26 @@ def sync_vcenter_vms(logger=None) -> SyncResult:
             obu_services_field.related_object_type = ContentType.objects.get_for_model(ObuServices)
             obu_services_field.save()
 
+        # Custom field-флаг: есть ли у VM хотя бы одна привязанная услуга
+        has_obu_services_field, _ = CustomField.objects.get_or_create(
+            name='has_obu_services',
+            defaults={
+                'label': 'Имеет OBU сервис',
+                'type': 'boolean',
+                'description': 'True если у виртуальной машины есть хотя бы одна привязанная услуга OBU',
+                'required': False,
+                'ui_visible': 'always',
+                'ui_editable': 'no',
+            }
+        )
+
         # Привязываем Custom Fields к VirtualMachine
         vm_content_type = ContentType.objects.get_for_model(VirtualMachine)
         for field in [vcenter_id_field, last_synced_field, vcenter_cluster_field, ip_address_field,
                       tools_status_field, vmtools_description_field, vmtools_version_number_field,
                       os_pretty_name_field, os_family_name_field, os_distro_name_field,
                       os_distro_version_field, os_kernel_version_field, os_bitness_field,
-                      creation_date_field, obu_services_field]:
+                      creation_date_field, obu_services_field, has_obu_services_field]:
             if vm_content_type not in field.object_types.all():
                 field.object_types.add(vm_content_type)
 

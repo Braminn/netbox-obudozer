@@ -88,31 +88,33 @@ def sync_services_cf_view(request):
             from virtualization.models import VirtualMachine
             from .models import ServiceVMAssignment, ObuServices
 
-            # Получаем все VM с assignments
-            vms = VirtualMachine.objects.filter(
-                service_assignments__isnull=False
-            ).distinct()
+            # Собираем ID всех VM, у которых есть assignments
+            vms_with_services_ids = set(
+                ServiceVMAssignment.objects.values_list('virtual_machine_id', flat=True).distinct()
+            )
 
             updated_cf = 0
             updated_tenant = 0
+            updated_flag = 0
 
-            for vm in vms:
-                # Синхронизация custom field obu_services
+            # Обновляем VM с сервисами
+            vms_with = VirtualMachine.objects.filter(id__in=vms_with_services_ids)
+            for vm in vms_with:
                 service_ids = list(
                     vm.service_assignments.values_list('service_id', flat=True)
                     .order_by('service_id')
                 )
                 vm.custom_field_data['obu_services'] = service_ids
+                vm.custom_field_data['has_obu_services'] = True
                 updated_cf += 1
+                updated_flag += 1
 
-                # Синхронизация tenant от первой услуги с tenant
                 first_service_with_tenant = (
                     vm.service_assignments
                     .filter(service__tenant__isnull=False)
                     .select_related('service__tenant')
                     .first()
                 )
-
                 if first_service_with_tenant:
                     vm.tenant = first_service_with_tenant.service.tenant
                     updated_tenant += 1
@@ -121,11 +123,26 @@ def sync_services_cf_view(request):
 
                 vm.save()
 
+            # Сбрасываем has_obu_services у VM без сервисов
+            vms_without = VirtualMachine.objects.exclude(id__in=vms_with_services_ids).filter(
+                custom_field_data__has_key='has_obu_services'
+            )
+            for vm in vms_without:
+                if vm.custom_field_data.get('has_obu_services'):
+                    vm.custom_field_data['has_obu_services'] = False
+                    vm.save()
+                    updated_flag += 1
+
             return JsonResponse({
                 'success': True,
                 'updated_cf': updated_cf,
                 'updated_tenant': updated_tenant,
-                'message': f'Обновлено: {updated_cf} VM с custom field, {updated_tenant} VM с tenant'
+                'updated_flag': updated_flag,
+                'message': (
+                    f'Обновлено: {updated_cf} VM с obu_services, '
+                    f'{updated_tenant} VM с tenant, '
+                    f'{updated_flag} VM с флагом has_obu_services'
+                )
             })
 
         except Exception as e:

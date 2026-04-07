@@ -35,8 +35,9 @@ def sync_vm_services_custom_field(sender, instance, **kwargs):
         .order_by('service_id')  # Сортировка для стабильности
     )
 
-    # Обновляем custom field
+    # Обновляем custom fields
     vm.custom_field_data['obu_services'] = service_ids
+    vm.custom_field_data['has_obu_services'] = len(service_ids) > 0
     vm.save()
 
 
