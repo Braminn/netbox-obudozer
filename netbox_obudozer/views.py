@@ -26,7 +26,7 @@ from .forms import ObuServicesForm, ObuServicesBulkEditForm
 from .filtersets import ObuServicesFilterSet
 
 
-@permission_required('netbox_obudozer.view_vcentersync')
+@permission_required('netbox_obudozer.view_vcentersyncaccess')
 def sync_vcenter_view(request):
     """
     View для запуска синхронизации с vCenter.

@@ -71,9 +71,6 @@ class ObuServices(ContactsMixin, NetBoxModel):
         ordering = ['name']
         verbose_name = 'Услуга OBU'
         verbose_name_plural = 'Услуги OBU'
-        permissions = [
-            ('view_vcentersync', 'Доступ к странице синхронизации vCenter'),
-        ]
 
     def __str__(self):
         return self.name
@@ -120,3 +117,19 @@ class ServiceVMAssignment(models.Model):
 
     def __str__(self):
         return f'{self.service.name} → {self.virtual_machine.name}'
+
+
+class VCenterSyncAccess(models.Model):
+    """
+    Модель без таблицы — только для управления правами доступа к синхронизации vCenter.
+    Таблица в БД не создаётся (managed=False).
+    """
+
+    class Meta:
+        managed = False
+        default_permissions = ()
+        verbose_name = 'Доступ к синхронизации vCenter'
+        verbose_name_plural = 'Доступ к синхронизации vCenter'
+        permissions = [
+            ('view_vcentersyncaccess', 'Доступ к странице синхронизации vCenter'),
+        ]
