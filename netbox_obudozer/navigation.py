@@ -31,14 +31,14 @@ menu = PluginMenu(
             PluginMenuItem(
                 link='plugins:netbox_obudozer:sync_vcenter',
                 link_text='vCenter Sync',
-                permissions=['virtualization.add_virtualmachine'],
+                permissions=['netbox_obudozer.view_vcentersync'],
                 buttons=(
                     PluginMenuButton(
                         link='plugins:netbox_obudozer:sync_vcenter',
                         title='Sync Now',
                         icon_class='mdi mdi-sync',
                         color=ButtonColorChoices.BLUE,
-                        permissions=['virtualization.add_virtualmachine']
+                        permissions=['netbox_obudozer.view_vcentersync']
                     ),
                 )
             ),

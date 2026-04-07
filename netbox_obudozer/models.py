@@ -71,6 +71,9 @@ class ObuServices(ContactsMixin, NetBoxModel):
         ordering = ['name']
         verbose_name = 'Услуга OBU'
         verbose_name_plural = 'Услуги OBU'
+        permissions = [
+            ('view_vcentersync', 'Доступ к странице синхронизации vCenter'),
+        ]
 
     def __str__(self):
         return self.name

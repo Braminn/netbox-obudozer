@@ -131,7 +131,5 @@ GitHub.sublime-settings
 .history
 
 .claude
-CLAUDE.md
-GIT_HELP.md
-NETBOX_WAY_IMPROVEMENTS.md
-ADDING_FIELDS.md
+*.md
+!README.md
