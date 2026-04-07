@@ -52,7 +52,7 @@ class ObuServices(ContactsMixin, NetBoxModel):
         related_name='obu_services',
         blank=True,
         null=True,
-        verbose_name='Роль VM',
+        verbose_name='Роль сервиса',
         help_text='Роль, назначаемая виртуальным машинам этой услуги'
     )
 

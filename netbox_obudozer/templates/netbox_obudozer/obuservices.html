@@ -22,6 +22,10 @@
                     <td>{{ object.tenant|linkify|placeholder }}</td>
                 </tr>
                 <tr>
+                    <th scope="row">Роль сервиса</th>
+                    <td>{{ object.vm_role|linkify|placeholder }}</td>
+                </tr>
+                <tr>
                     <th scope="row">Дата начала</th>
                     <td>{{ object.start_date|date:"d.m.Y"|placeholder }}</td>
                 </tr>
