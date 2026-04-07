@@ -34,6 +34,11 @@ class ObuServicesTable(NetBoxTable):
         verbose_name='Дата окончания'
     )
 
+    vm_role = tables.Column(
+        linkify=True,
+        verbose_name='Роль сервиса'
+    )
+
     description = tables.Column(
         verbose_name='Описание'
     )
@@ -51,8 +56,8 @@ class ObuServicesTable(NetBoxTable):
 
     class Meta(NetBoxTable.Meta):
         model = ObuServices
-        fields = ('name', 'tenant', 'start_date', 'end_date', 'description', 'vm_count', 'created', 'last_updated')
-        default_columns = ('name', 'tenant', 'start_date', 'end_date', 'vm_count')
+        fields = ('name', 'vm_role', 'tenant', 'start_date', 'end_date', 'description', 'vm_count', 'created', 'last_updated')
+        default_columns = ('name', 'vm_role', 'tenant', 'start_date', 'end_date', 'vm_count')
 
     def render_vm_count(self, record):
         """Отображение количества назначенных VM."""
