@@ -29,9 +29,10 @@ class ObuServicesForm(NetBoxModelForm):
     )
 
     vm_role = DynamicModelChoiceField(
-        queryset=DeviceRole.objects.filter(vm_role=True),
+        queryset=DeviceRole.objects.all(),
         required=False,
-        label='Роль сервиса'
+        label='Роль сервиса',
+        query_params={'vm_role': True}
     )
 
     start_date = forms.DateField(
