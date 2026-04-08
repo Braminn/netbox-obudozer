@@ -1081,3 +1081,70 @@ def get_sync_status(cluster_group_name: str = None) -> Dict:
             'last_sync': None,
             'cluster_count': 0,
         }
+
+
+def sync_cluster_to_service(service_id: int, cluster_id: int, logger=None) -> Dict:
+    """
+    Синхронизирует все VM из указанного кластера в указанную услугу.
+
+    Добавляет VM из кластера к услуге, не трогая существующие привязки к другим
+    услугам. VM, которые уже привязаны к этой услуге, пропускаются.
+    VM, которые были удалены из кластера (не существуют в NetBox), игнорируются.
+
+    Args:
+        service_id: PK услуги ObuServices
+        cluster_id: PK кластера Cluster
+        logger: Опциональный logger для фоновых задач
+
+    Returns:
+        Dict с ключами: added (int), skipped (int), errors (list)
+    """
+    from .models import ObuServices, ServiceVMAssignment
+
+    result = {'added': 0, 'skipped': 0, 'errors': []}
+
+    try:
+        service = ObuServices.objects.get(pk=service_id)
+    except ObuServices.DoesNotExist:
+        msg = f"Услуга с id={service_id} не найдена"
+        result['errors'].append(msg)
+        if logger:
+            logger.error(f"  ❌ {msg}")
+        return result
+
+    try:
+        cluster = Cluster.objects.get(pk=cluster_id)
+    except Cluster.DoesNotExist:
+        msg = f"Кластер с id={cluster_id} не найден"
+        result['errors'].append(msg)
+        if logger:
+            logger.error(f"  ❌ {msg}")
+        return result
+
+    if logger:
+        logger.info(f"  → Синхронизация кластера «{cluster.name}» → услуга «{service.name}»")
+
+    cluster_vms = VirtualMachine.objects.filter(cluster=cluster)
+    existing_vm_ids = set(
+        ServiceVMAssignment.objects.filter(service=service)
+        .values_list('virtual_machine_id', flat=True)
+    )
+
+    to_add = [vm for vm in cluster_vms if vm.pk not in existing_vm_ids]
+
+    with transaction.atomic():
+        for vm in to_add:
+            try:
+                ServiceVMAssignment.objects.create(service=service, virtual_machine=vm)
+                result['added'] += 1
+            except Exception as e:
+                result['errors'].append(f"VM {vm.name}: {e}")
+
+        result['skipped'] = cluster_vms.count() - result['added']
+
+    if logger:
+        logger.info(f"  ✓ Добавлено: {result['added']}, пропущено (уже было): {result['skipped']}")
+        if result['errors']:
+            logger.warning(f"  ⚠️ Ошибок: {len(result['errors'])}")
+
+    return result

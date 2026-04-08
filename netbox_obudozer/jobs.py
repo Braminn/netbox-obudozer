@@ -5,7 +5,13 @@
 """
 from netbox.jobs import JobRunner
 
-from .sync import sync_vcenter_vms
+from .sync import sync_vcenter_vms, sync_cluster_to_service
+
+# Привязки кластер → услуга, которые синхронизируются автоматически после vCenter sync
+# Формат: (service_id, cluster_id)
+AUTO_CLUSTER_SERVICE_BINDINGS = [
+    (52, 49),  # Услуга Keysystems ← кластер Keysystems
+]
 
 
 class VCenterSyncJob(JobRunner):
@@ -68,6 +74,13 @@ class VCenterSyncJob(JobRunner):
                 # Если ошибок больше 10, уведомляем об этом
                 if len(result.errors) > 10:
                     self.logger.warning(f"... и еще {len(result.errors) - 10} ошибок")
+
+            # Автоматическая синхронизация кластеров → услуги
+            if AUTO_CLUSTER_SERVICE_BINDINGS:
+                self.logger.info("")
+                self.logger.info("🔗 Синхронизация кластеров → услуги")
+                for service_id, cluster_id in AUTO_CLUSTER_SERVICE_BINDINGS:
+                    sync_cluster_to_service(service_id, cluster_id, logger=self.logger)
 
         except Exception as e:
             # Критическая ошибка - логируем и пробрасываем исключение
