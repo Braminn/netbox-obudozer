@@ -27,14 +27,6 @@
                     <td>{{ object.vm_role|linkify|placeholder }}</td>
                 </tr>
                 <tr>
-                    <th scope="row">Дата начала</th>
-                    <td>{{ object.start_date|date:"d.m.Y"|placeholder }}</td>
-                </tr>
-                <tr>
-                    <th scope="row">Дата окончания</th>
-                    <td>{{ object.end_date|date:"d.m.Y"|placeholder }}</td>
-                </tr>
-                <tr>
                     <th scope="row">Количество VM</th>
                     <td>{{ object.vm_assignments.count }}</td>
                 </tr>

@@ -56,20 +56,6 @@ class ObuServices(ContactsMixin, NetBoxModel):
         help_text='Роль, назначаемая виртуальным машинам этой услуги'
     )
 
-    start_date = models.DateField(
-        blank=True,
-        null=True,
-        verbose_name='Дата начала',
-        help_text='Дата начала оказания услуги'
-    )
-
-    end_date = models.DateField(
-        blank=True,
-        null=True,
-        verbose_name='Дата окончания',
-        help_text='Дата окончания оказания услуги'
-    )
-
     # Reverse relation для ContactAssignment (GenericForeignKey)
     contact_assignments = GenericRelation(
         to='tenancy.ContactAssignment',

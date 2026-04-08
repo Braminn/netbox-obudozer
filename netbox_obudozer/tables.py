@@ -26,14 +26,6 @@ class ObuServicesTable(NetBoxTable):
         verbose_name='Организация'
     )
 
-    start_date = tables.DateColumn(
-        verbose_name='Дата начала'
-    )
-
-    end_date = tables.DateColumn(
-        verbose_name='Дата окончания'
-    )
-
     vm_role = columns.ColoredLabelColumn(
         verbose_name='Роль сервиса'
     )
@@ -52,6 +44,6 @@ class ObuServicesTable(NetBoxTable):
 
     class Meta(NetBoxTable.Meta):
         model = ObuServices
-        fields = ('name', 'vm_role', 'tenant', 'start_date', 'end_date', 'description', 'vm_count', 'created', 'last_updated')
-        default_columns = ('name', 'vm_role', 'tenant', 'start_date', 'end_date', 'vm_count')
+        fields = ('name', 'vm_role', 'tenant', 'description', 'vm_count', 'created', 'last_updated')
+        default_columns = ('name', 'vm_role', 'tenant', 'vm_count')
 

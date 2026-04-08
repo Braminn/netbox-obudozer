@@ -35,18 +35,6 @@ class ObuServicesForm(NetBoxModelForm):
         query_params={'vm_role': True}
     )
 
-    start_date = forms.DateField(
-        required=False,
-        label='Дата начала',
-        widget=forms.DateInput(attrs={'type': 'date'})
-    )
-
-    end_date = forms.DateField(
-        required=False,
-        label='Дата окончания',
-        widget=forms.DateInput(attrs={'type': 'date'})
-    )
-
     virtual_machines = DynamicModelMultipleChoiceField(
         queryset=VirtualMachine.objects.all(),
         required=False,
@@ -61,8 +49,6 @@ class ObuServicesForm(NetBoxModelForm):
             'description',
             'tenant',
             'vm_role',
-            'start_date',
-            'end_date',
             'virtual_machines',
             'tags',
         ]
@@ -113,14 +99,6 @@ class ObuServicesBulkEditForm(NetBoxModelBulkEditForm):
         queryset=Tenant.objects.all(),
         required=False
     )
-    start_date = forms.DateField(
-        required=False,
-        widget=forms.DateInput(attrs={'type': 'date'})
-    )
-    end_date = forms.DateField(
-        required=False,
-        widget=forms.DateInput(attrs={'type': 'date'})
-    )
     description = forms.CharField(
         max_length=500,
         required=False,
@@ -129,4 +107,4 @@ class ObuServicesBulkEditForm(NetBoxModelBulkEditForm):
     comments = CommentField()
 
     model = ObuServices
-    nullable_fields = ['description', 'tenant', 'start_date', 'end_date']
+    nullable_fields = ['description', 'tenant']
