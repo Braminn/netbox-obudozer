@@ -207,17 +207,26 @@ class ObuServicesDetailView(ObjectView):
         disk_sum = VirtualDisk.objects.filter(virtual_machine_id__in=active_vm_ids).aggregate(total=Sum('size'))
         total_disk_mb = disk_sum['total'] or 0
 
-        def fmt_mb(mb):
+        def fmt_memory(mb):
+            # memory хранится в бинарных МБ (1 ГБ = 1024 МБ)
             if mb >= 1024 * 1024:
                 return f"{mb / 1024 / 1024:.1f} ТБ"
             if mb >= 1024:
                 return f"{mb / 1024:.1f} ГБ"
             return f"{mb} МБ"
 
+        def fmt_disk(mb):
+            # VirtualDisk.size хранится в десятичных МБ (1 ГБ = 1000 МБ, как в vCenter UI)
+            if mb >= 1000 * 1000:
+                return f"{mb / 1000 / 1000:.1f} ТБ"
+            if mb >= 1000:
+                return f"{mb / 1000:.1f} ГБ"
+            return f"{mb} МБ"
+
         return {
             'total_vcpus': totals['total_vcpus'] or 0,
-            'total_memory': fmt_mb(totals['total_memory'] or 0),
-            'total_disk': fmt_mb(total_disk_mb),
+            'total_memory': fmt_memory(totals['total_memory'] or 0),
+            'total_disk': fmt_disk(total_disk_mb),
         }
 
 
