@@ -37,7 +37,7 @@ class ObudozerPluginConfig(PluginConfig):
         'auto_sync_interval': 3600,  # секунды (1 час)
     }
     min_version = '4.4.0'
-    template_extensions = 'template_extensions'
+    template_extensions = 'template_extensions.template_extensions'
 
     def ready(self):
         """
