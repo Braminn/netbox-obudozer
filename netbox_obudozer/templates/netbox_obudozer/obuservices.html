@@ -1,5 +1,6 @@
 {% extends 'generic/object.html' %}
 {% load helpers %}
+{% load plugins %}
 
 {% block content %}
 <div class="row">
@@ -61,6 +62,8 @@
                 </tr>
             </table>
         </div>
+
+        {% plugin_right_page object %}
     </div>
 </div>
 
