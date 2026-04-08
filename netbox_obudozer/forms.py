@@ -39,7 +39,7 @@ class ObuServicesForm(NetBoxModelForm):
         queryset=VirtualMachine.objects.all(),
         required=False,
         label='Виртуальные машины',
-        query_params={'status': 'active'}  # Только активные VM
+        query_params={'status': ['active', 'offline']}
     )
 
     class Meta:
