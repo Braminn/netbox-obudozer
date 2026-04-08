@@ -1050,17 +1050,15 @@ def get_sync_status(cluster_group_name: str = None) -> Dict:
         failed_vms = vms.filter(status='failed').count()
         cluster_count = Cluster.objects.filter(group=cluster_group).count()
 
-        # Получаем время последней синхронизации из Custom Fields
-        last_sync = None
-        for vm in vms.order_by('-last_updated')[:1]:
-            last_synced_str = vm.custom_field_data.get('last_synced') if vm.custom_field_data else None
-            if last_synced_str:
-                try:
-                    from dateutil import parser
-                    last_sync = parser.parse(last_synced_str)
-                except:
-                    pass
-                break
+        # Получаем время последней успешной синхронизации из таблицы Job
+        from core.models import Job
+        last_job = (
+            Job.objects
+            .filter(name='vCenter VM Synchronization', status='completed')
+            .order_by('-completed')
+            .first()
+        )
+        last_sync = last_job.completed if last_job else None
 
         return {
             'total_vms': total_vms,
