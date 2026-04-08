@@ -6,7 +6,7 @@ Views (представления) плагина netbox_obudozer
 from django.shortcuts import render
 from django.contrib.auth.decorators import permission_required
 from django.http import JsonResponse
-from django.db.models import Count
+from django.db.models import Count, Sum
 
 from netbox.views.generic import (
     ObjectListView,
@@ -191,6 +191,34 @@ class ObuServicesDetailView(ObjectView):
     включая пользовательские поля и теги.
     """
     queryset = ObuServices.objects.all()
+
+    def get_extra_context(self, request, instance):
+        from virtualization.models import VirtualMachine
+        from .models import ServiceVMAssignment
+
+        vm_ids = ServiceVMAssignment.objects.filter(service=instance).values_list('virtual_machine_id', flat=True)
+        active_vm_ids = VirtualMachine.objects.filter(id__in=vm_ids, status='active').values_list('id', flat=True)
+        totals = VirtualMachine.objects.filter(id__in=active_vm_ids).aggregate(
+            total_vcpus=Sum('vcpus'),
+            total_memory=Sum('memory'),
+        )
+
+        from virtualization.models import VirtualDisk
+        disk_sum = VirtualDisk.objects.filter(virtual_machine_id__in=active_vm_ids).aggregate(total=Sum('size'))
+        total_disk_mb = disk_sum['total'] or 0
+
+        def fmt_mb(mb):
+            if mb >= 1024 * 1024:
+                return f"{mb / 1024 / 1024:.1f} ТБ"
+            if mb >= 1024:
+                return f"{mb / 1024:.1f} ГБ"
+            return f"{mb} МБ"
+
+        return {
+            'total_vcpus': totals['total_vcpus'] or 0,
+            'total_memory': fmt_mb(totals['total_memory'] or 0),
+            'total_disk': fmt_mb(total_disk_mb),
+        }
 
 
 @register_model_view(ObuServices, 'add', detail=False)

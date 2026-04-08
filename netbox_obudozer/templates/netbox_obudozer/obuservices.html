@@ -55,6 +55,27 @@
             </table>
         </div>
 
+        <div class="card">
+            <div class="card-header">
+                <strong>Суммарные ресурсы VM</strong>
+                <span class="text-muted small ms-2">только активные</span>
+            </div>
+            <table class="table table-hover attr-table">
+                <tr>
+                    <th scope="row">vCPU</th>
+                    <td>{{ total_vcpus }}</td>
+                </tr>
+                <tr>
+                    <th scope="row">Память</th>
+                    <td>{{ total_memory }}</td>
+                </tr>
+                <tr>
+                    <th scope="row">Диски</th>
+                    <td>{{ total_disk }}</td>
+                </tr>
+            </table>
+        </div>
+
         {% plugin_right_page object %}
     </div>
 </div>
