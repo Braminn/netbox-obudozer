@@ -42,11 +42,8 @@ class ObuServicesTable(NetBoxTable):
         verbose_name='Описание'
     )
 
-    # Новая колонка для отображения количества VM
     vm_count = tables.Column(
         verbose_name='Количество VM',
-        empty_values=(),
-        orderable=False
     )
 
     # Унаследованные колонки из NetBoxModel:
@@ -58,6 +55,3 @@ class ObuServicesTable(NetBoxTable):
         fields = ('name', 'vm_role', 'tenant', 'start_date', 'end_date', 'description', 'vm_count', 'created', 'last_updated')
         default_columns = ('name', 'vm_role', 'tenant', 'start_date', 'end_date', 'vm_count')
 
-    def render_vm_count(self, record):
-        """Отображение количества назначенных VM."""
-        return record.vm_assignments.count()
