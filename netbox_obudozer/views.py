@@ -224,7 +224,7 @@ class ObuServicesDetailView(ObjectView):
             return f"{mb} МБ"
 
         return {
-            'total_vcpus': totals['total_vcpus'] or 0,
+            'total_vcpus': int(totals['total_vcpus'] or 0),
             'total_memory': fmt_memory(totals['total_memory'] or 0),
             'total_disk': fmt_disk(total_disk_mb),
         }
