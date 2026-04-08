@@ -15,7 +15,7 @@ class ObudozerPluginConfig(PluginConfig):
     name = 'netbox_obudozer'
     verbose_name = 'NetBox Obudozer Plugin'
     description = 'Плагин управления ресурсами ЦОД с интеграцией VMware vCenter'
-    version = '0.3.0'
+    version = '0.3.1'
     author = 'Stegantsev Victor'
     author_email = 'your.email@example.com'
     base_url = 'obudozer'
