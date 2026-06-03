@@ -168,6 +168,7 @@ def sync_services_cf_view(request):
 def test_gitlab_connection_view(request):
     """
     Проверка подключения к GitLab. POST → результат через messages → redirect обратно.
+    Поддерживает несколько репозиториев через gitlab_projects (список).
     """
     if request.method == 'POST':
         try:
@@ -177,7 +178,7 @@ def test_gitlab_connection_view(request):
             config = settings.PLUGINS_CONFIG.get('netbox_obudozer', {})
             gitlab_url = config.get('gitlab_url', '').rstrip('/')
             gitlab_token = config.get('gitlab_token', '')
-            gitlab_project_id = config.get('gitlab_project_id', '')
+            gitlab_projects = config.get('gitlab_projects', [])
             verify_ssl = config.get('gitlab_verify_ssl', True)
 
             if not gitlab_url:
@@ -187,37 +188,40 @@ def test_gitlab_connection_view(request):
                 messages.error(request, 'GitLab: gitlab_token не настроен в PLUGINS_CONFIG')
                 return redirect('plugins:netbox_obudozer:sync_vcenter')
 
-            resp = req.get(
-                f'{gitlab_url}/api/v4/user',
-                headers={'PRIVATE-TOKEN': gitlab_token},
-                timeout=10,
-                verify=verify_ssl,
-            )
+            headers = {'PRIVATE-TOKEN': gitlab_token}
+            kwargs = {'headers': headers, 'timeout': 10, 'verify': verify_ssl}
 
-            if resp.status_code == 401:
+            # Проверяем сам токен
+            token_resp = req.get(f'{gitlab_url}/api/v4/personal_access_tokens/self', **kwargs)
+            if token_resp.status_code == 401:
                 messages.error(request, 'GitLab: неверный токен (HTTP 401 Unauthorized)')
                 return redirect('plugins:netbox_obudozer:sync_vcenter')
-            if resp.status_code != 200:
-                messages.error(request, f'GitLab: ошибка подключения (HTTP {resp.status_code})')
+            if token_resp.status_code == 200:
+                token_name = token_resp.json().get('name', '?')
+                messages.success(request, f'GitLab: токен «{token_name}» действителен')
+            else:
+                messages.warning(request, f'GitLab: токен принят, но /personal_access_tokens/self вернул HTTP {token_resp.status_code}')
+
+            if not gitlab_projects:
+                messages.warning(request, 'GitLab: gitlab_projects не настроен в PLUGINS_CONFIG')
                 return redirect('plugins:netbox_obudozer:sync_vcenter')
 
-            username = resp.json().get('username', '?')
+            # Проверяем каждый репозиторий
+            for project_id in gitlab_projects:
+                project_id_encoded = str(project_id).replace('/', '%2F')
+                proj_resp = req.get(f'{gitlab_url}/api/v4/projects/{project_id_encoded}', **kwargs)
 
-            if gitlab_project_id:
-                project_id_encoded = str(gitlab_project_id).replace('/', '%2F')
-                proj_resp = req.get(
-                    f'{gitlab_url}/api/v4/projects/{project_id_encoded}',
-                    headers={'PRIVATE-TOKEN': gitlab_token},
-                    timeout=10,
-                    verify=verify_ssl,
-                )
-                if proj_resp.status_code == 200:
-                    proj_name = proj_resp.json().get('name_with_namespace', gitlab_project_id)
-                    messages.success(request, f'GitLab: подключение успешно. Пользователь: {username}, проект: {proj_name}')
-                else:
-                    messages.error(request, f'GitLab: авторизация успешна ({username}), но проект {gitlab_project_id} недоступен (HTTP {proj_resp.status_code})')
-            else:
-                messages.success(request, f'GitLab: подключение успешно. Пользователь: {username} (проект не настроен)')
+                if proj_resp.status_code != 200:
+                    messages.error(request, f'GitLab [{project_id}]: недоступен (HTTP {proj_resp.status_code})')
+                    continue
+
+                p = proj_resp.json()
+                last_activity = (p.get('last_activity_at', '') or '')[:10]
+                messages.success(request, (
+                    f'GitLab [{p["name_with_namespace"]}]: '
+                    f'ветка: {p.get("default_branch", "?")} | '
+                    f'последняя активность: {last_activity}'
+                ))
 
         except Exception as e:
             messages.error(request, f'GitLab: {e}')

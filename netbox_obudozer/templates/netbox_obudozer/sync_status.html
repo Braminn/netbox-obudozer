@@ -188,8 +188,8 @@
                 </div>
                 <div class="card-body">
                     <p class="text-muted">
-                        Проверка подключения к корпоративному репозиторию GitLab.
-                        Настройте <code>gitlab_url</code>, <code>gitlab_token</code> и <code>gitlab_project_id</code> в <code>PLUGINS_CONFIG</code>.
+                        Проверка подключения к репозиториям GitLab.
+                        Настройте <code>gitlab_url</code>, <code>gitlab_token</code> и <code>gitlab_projects</code> в <code>PLUGINS_CONFIG</code>.
                     </p>
                     <form method="post" action="{% url 'plugins:netbox_obudozer:test_gitlab_connection' %}">
                         {% csrf_token %}

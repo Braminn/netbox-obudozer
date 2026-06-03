@@ -35,6 +35,12 @@ class ObudozerPluginConfig(PluginConfig):
         # Настройки синхронизации
         'sync_enabled': True,
         'auto_sync_interval': 3600,  # секунды (1 час)
+
+        # Настройки GitLab
+        'gitlab_url': '',
+        'gitlab_token': '',
+        'gitlab_projects': [],       # список project ID или 'group/repo'
+        'gitlab_verify_ssl': True,
     }
     min_version = '4.4.0'
     template_extensions = 'template_extensions.template_extensions'
