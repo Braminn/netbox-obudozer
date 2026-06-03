@@ -177,6 +177,31 @@
         </div>
     </div>
 
+    <!-- GitLab — Проверка подключения -->
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">
+                        <i class="mdi mdi-gitlab"></i> GitLab — Конфигурации nginx
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted">
+                        Проверка подключения к корпоративному репозиторию GitLab.
+                        Настройте <code>gitlab_url</code>, <code>gitlab_token</code> и <code>gitlab_project_id</code> в <code>PLUGINS_CONFIG</code>.
+                    </p>
+                    <form method="post" action="{% url 'plugins:netbox_obudozer:test_gitlab_connection' %}">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-outline-primary">
+                            <i class="mdi mdi-connection"></i> Подключиться
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Информация -->
     <div class="row mt-4">
         <div class="col-12">
