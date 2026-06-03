@@ -14,6 +14,9 @@ urlpatterns = [
     # Синхронизация custom field obu_services
     path('sync-services-cf/', views.sync_services_cf_view, name='sync_services_cf'),
 
+    # Проверка подключения к GitLab
+    path('test-gitlab-connection/', views.test_gitlab_connection_view, name='test_gitlab_connection'),
+
     # Автоматическая генерация URL для ObuServices (list, add, bulk_edit, bulk_delete)
     path('obu-services/', include(get_model_urls('netbox_obudozer', 'obuservices', detail=False))),
 

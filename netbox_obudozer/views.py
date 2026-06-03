@@ -3,7 +3,8 @@ Views (представления) плагина netbox_obudozer
 
 Содержит функцию синхронизации с vCenter и полный CRUD для услуг OBU.
 """
-from django.shortcuts import render
+from django.shortcuts import render, redirect
+from django.contrib import messages
 from django.contrib.auth.decorators import permission_required
 from django.http import JsonResponse
 from django.db.models import Count, Sum
@@ -161,6 +162,67 @@ def sync_services_cf_view(request):
 
     # GET не поддерживается
     return JsonResponse({'error': 'Method not allowed'}, status=405)
+
+
+@permission_required('netbox_obudozer.view_vcentersyncaccess')
+def test_gitlab_connection_view(request):
+    """
+    Проверка подключения к GitLab. POST → результат через messages → redirect обратно.
+    """
+    if request.method == 'POST':
+        try:
+            from django.conf import settings
+            import requests as req
+
+            config = settings.PLUGINS_CONFIG.get('netbox_obudozer', {})
+            gitlab_url = config.get('gitlab_url', '').rstrip('/')
+            gitlab_token = config.get('gitlab_token', '')
+            gitlab_project_id = config.get('gitlab_project_id', '')
+            verify_ssl = config.get('gitlab_verify_ssl', True)
+
+            if not gitlab_url:
+                messages.error(request, 'GitLab: gitlab_url не настроен в PLUGINS_CONFIG')
+                return redirect('plugins:netbox_obudozer:sync_vcenter')
+            if not gitlab_token:
+                messages.error(request, 'GitLab: gitlab_token не настроен в PLUGINS_CONFIG')
+                return redirect('plugins:netbox_obudozer:sync_vcenter')
+
+            resp = req.get(
+                f'{gitlab_url}/api/v4/user',
+                headers={'PRIVATE-TOKEN': gitlab_token},
+                timeout=10,
+                verify=verify_ssl,
+            )
+
+            if resp.status_code == 401:
+                messages.error(request, 'GitLab: неверный токен (HTTP 401 Unauthorized)')
+                return redirect('plugins:netbox_obudozer:sync_vcenter')
+            if resp.status_code != 200:
+                messages.error(request, f'GitLab: ошибка подключения (HTTP {resp.status_code})')
+                return redirect('plugins:netbox_obudozer:sync_vcenter')
+
+            username = resp.json().get('username', '?')
+
+            if gitlab_project_id:
+                project_id_encoded = str(gitlab_project_id).replace('/', '%2F')
+                proj_resp = req.get(
+                    f'{gitlab_url}/api/v4/projects/{project_id_encoded}',
+                    headers={'PRIVATE-TOKEN': gitlab_token},
+                    timeout=10,
+                    verify=verify_ssl,
+                )
+                if proj_resp.status_code == 200:
+                    proj_name = proj_resp.json().get('name_with_namespace', gitlab_project_id)
+                    messages.success(request, f'GitLab: подключение успешно. Пользователь: {username}, проект: {proj_name}')
+                else:
+                    messages.error(request, f'GitLab: авторизация успешна ({username}), но проект {gitlab_project_id} недоступен (HTTP {proj_resp.status_code})')
+            else:
+                messages.success(request, f'GitLab: подключение успешно. Пользователь: {username} (проект не настроен)')
+
+        except Exception as e:
+            messages.error(request, f'GitLab: {e}')
+
+    return redirect('plugins:netbox_obudozer:sync_vcenter')
 
 
 @register_model_view(ObuServices, 'list', detail=False)
