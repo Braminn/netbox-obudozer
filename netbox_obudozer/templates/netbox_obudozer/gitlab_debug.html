@@ -1,0 +1,185 @@
+{% extends 'base/layout.html' %}
+
+{% block title %}GitLab — Отладка nginx конфигов{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+
+    <div class="row mb-3">
+        <div class="col-12 d-flex align-items-center gap-3">
+            <h1 class="mb-0">
+                <i class="mdi mdi-bug-outline"></i> GitLab — Отладка nginx конфигов
+            </h1>
+            <a href="{% url 'plugins:netbox_obudozer:sync_vcenter' %}" class="btn btn-sm btn-outline-secondary">
+                <i class="mdi mdi-arrow-left"></i> Назад
+            </a>
+        </div>
+    </div>
+
+    <!-- Кнопка запуска -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-body">
+                    <p class="text-muted mb-3">
+                        Загружает все <code>.conf</code> файлы из папки <code>gitlab_nginx_path</code>
+                        в каждом репозитории и разбирает nginx-блоки: домены, proxy_pass, цепочки.
+                        Данные не сохраняются в БД.
+                    </p>
+                    <form method="post">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-primary">
+                            <i class="mdi mdi-download"></i> Загрузить и разобрать конфиги
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Ошибка -->
+    {% if error %}
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="alert alert-danger">
+                <h6><i class="mdi mdi-alert-circle"></i> Ошибка</h6>
+                <pre class="mb-0" style="white-space: pre-wrap; font-size: 13px;">{{ error }}</pre>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Статистика -->
+    {% if stats %}
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0"><i class="mdi mdi-chart-bar"></i> Итог</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row text-center">
+                        <div class="col">
+                            <div class="text-muted small">Файлов загружено</div>
+                            <div class="h4">{{ stats.total_files }}</div>
+                        </div>
+                        <div class="col">
+                            <div class="text-muted small">Доменов найдено</div>
+                            <div class="h4">{{ stats.total_domains }}</div>
+                        </div>
+                        <div class="col">
+                            <div class="text-muted small">IP разрешён</div>
+                            <div class="h4 text-success">{{ stats.resolved }}</div>
+                        </div>
+                        <div class="col">
+                            <div class="text-muted small">Upstream</div>
+                            <div class="h4 text-warning">{{ stats.upstream }}</div>
+                        </div>
+                        <div class="col">
+                            <div class="text-muted small">Не разрешён</div>
+                            <div class="h4 text-danger">{{ stats.unresolved }}</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Результаты по проектам и файлам -->
+    {% if results_by_file %}
+
+    {% for project_entry in results_by_file %}
+    <div class="row mb-2">
+        <div class="col-12">
+            <h5 class="text-muted border-bottom pb-1">
+                <i class="mdi mdi-gitlab"></i> {{ project_entry.project }}
+            </h5>
+        </div>
+    </div>
+
+    {% for file_entry in project_entry.files %}
+    <div class="row mb-3">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center py-2">
+                    <span>
+                        <i class="mdi mdi-file-document-outline text-muted"></i>
+                        <code class="ms-1">{{ file_entry.path }}</code>
+                    </span>
+                    <span class="badge bg-secondary">{{ file_entry.domains|length }}</span>
+                </div>
+
+                {% if file_entry.domains %}
+                <div class="card-body p-0">
+                    <table class="table table-sm table-hover mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th style="width: 22%">Домен</th>
+                                <th style="width: 20%">Псевдонимы</th>
+                                <th>Цепочка разрешения</th>
+                                <th style="width: 15%" class="text-center">Результат</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for d in file_entry.domains %}
+                            <tr>
+                                <td><code>{{ d.domain }}</code></td>
+                                <td>
+                                    {% if d.aliases %}
+                                        <small class="text-muted">
+                                            {% for alias in d.aliases %}<code>{{ alias }}</code>{% if not forloop.last %} {% endif %}{% endfor %}
+                                        </small>
+                                    {% else %}
+                                        <span class="text-muted">—</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <small class="font-monospace text-break">{{ d.chain_display }}</small>
+                                </td>
+                                <td class="text-center">
+                                    {% if d.status == 'direct' %}
+                                        <span class="badge bg-success">
+                                            <i class="mdi mdi-check-circle"></i> IP
+                                        </span>
+                                    {% elif d.status == 'chained' %}
+                                        <span class="badge bg-success">
+                                            <i class="mdi mdi-link-chain"></i> Цепочка
+                                        </span>
+                                    {% elif d.status == 'upstream' %}
+                                        <span class="badge bg-warning text-dark">
+                                            <i class="mdi mdi-server-network"></i> Upstream
+                                        </span>
+                                    {% else %}
+                                        <span class="badge bg-danger">
+                                            <i class="mdi mdi-help-circle"></i> Не разрешён
+                                        </span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="card-body text-muted">
+                    <small>Доменов не найдено (нет server_name или proxy_pass)</small>
+                </div>
+                {% endif %}
+
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+
+    {% endfor %}
+
+    {% elif stats %}
+    <div class="alert alert-warning">
+        <i class="mdi mdi-alert"></i>
+        Конфигов не найдено. Проверьте <code>gitlab_projects</code> и <code>gitlab_nginx_path</code>.
+    </div>
+    {% endif %}
+
+</div>
+{% endblock %}

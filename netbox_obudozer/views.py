@@ -229,6 +229,90 @@ def test_gitlab_connection_view(request):
     return redirect('plugins:netbox_obudozer:sync_vcenter')
 
 
+@permission_required('netbox_obudozer.view_vcentersyncaccess')
+def gitlab_debug_view(request):
+    """
+    Отладочная страница: загружает .conf файлы из GitLab, парсит их и
+    показывает результат по каждому файлу без сохранения в БД.
+    """
+    results_by_file = None
+    stats = None
+    error = None
+
+    if request.method == 'POST':
+        try:
+            from collections import defaultdict
+            from .gitlab_client import fetch_nginx_configs
+            from .nginx_parser import parse_configs
+
+            configs_raw = fetch_nginx_configs()
+            resolutions = parse_configs(configs_raw)
+
+            # Обогащаем каждый результат строкой для отображения цепочки
+            processed = []
+            for r in resolutions:
+                chain_parts = list(r.chain)
+                if r.final_ip:
+                    ip_str = r.final_ip
+                    if r.final_port:
+                        ip_str += f':{r.final_port}'
+                    chain_parts.append(ip_str)
+                    status = 'chained' if len(r.chain) > 1 else 'direct'
+                elif r.upstream_name:
+                    chain_parts.append(f'[upstream: {r.upstream_name}]')
+                    status = 'upstream'
+                else:
+                    chain_parts.append('[не разрешён]')
+                    status = 'unresolved'
+
+                processed.append({
+                    'domain': r.domain,
+                    'aliases': r.aliases,
+                    'final_ip': r.final_ip,
+                    'final_port': r.final_port,
+                    'upstream_name': r.upstream_name,
+                    'chain_display': ' → '.join(chain_parts),
+                    'status': status,
+                    'source_file': r.source_file,
+                    'source_project': r.source_project,
+                })
+
+            # Группируем по проекту → список файлов → список доменов
+            by_project = defaultdict(lambda: defaultdict(list))
+            for item in processed:
+                by_project[item['source_project']][item['source_file']].append(item)
+
+            # Преобразуем в список для удобства итерации в шаблоне
+            results_by_file = [
+                {
+                    'project': project,
+                    'files': [
+                        {'path': file_path, 'domains': domains}
+                        for file_path, domains in sorted(files.items())
+                    ],
+                }
+                for project, files in sorted(by_project.items())
+            ]
+
+            stats = {
+                'total_files': len(configs_raw),
+                'total_domains': len(resolutions),
+                'resolved': sum(1 for r in resolutions if r.final_ip),
+                'upstream': sum(1 for r in resolutions if r.upstream_name and not r.final_ip),
+                'unresolved': sum(1 for r in resolutions if not r.final_ip and not r.upstream_name),
+            }
+
+        except Exception as e:
+            import traceback
+            error = f'{e}\n\n{traceback.format_exc()}'
+
+    return render(request, 'netbox_obudozer/gitlab_debug.html', {
+        'results_by_file': results_by_file,
+        'stats': stats,
+        'error': error,
+    })
+
+
 @register_model_view(ObuServices, 'list', detail=False)
 class ObuServicesListView(ObjectListView):
     """

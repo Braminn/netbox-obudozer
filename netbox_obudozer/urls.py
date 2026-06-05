@@ -17,6 +17,9 @@ urlpatterns = [
     # Проверка подключения к GitLab
     path('test-gitlab-connection/', views.test_gitlab_connection_view, name='test_gitlab_connection'),
 
+    # Отладочная страница парсинга nginx-конфигов из GitLab
+    path('gitlab-debug/', views.gitlab_debug_view, name='gitlab_debug'),
+
     # Автоматическая генерация URL для ObuServices (list, add, bulk_edit, bulk_delete)
     path('obu-services/', include(get_model_urls('netbox_obudozer', 'obuservices', detail=False))),
 
