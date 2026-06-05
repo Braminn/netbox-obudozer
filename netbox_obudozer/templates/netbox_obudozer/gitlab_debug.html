@@ -99,9 +99,7 @@
                         <thead class="table-light">
                             <tr>
                                 <th>Репозиторий</th>
-                                <th>Папка</th>
-                                <th class="text-center">Найдено файлов</th>
-                                <th class="text-center">Загружено</th>
+                                <th class="text-center">Найдено .conf</th>
                                 <th>Статус</th>
                             </tr>
                         </thead>
@@ -109,8 +107,6 @@
                             {% for r in project_reports %}
                             <tr>
                                 <td><code>{{ r.project }}</code></td>
-                                <td><code>{{ r.nginx_path }}</code></td>
-                                <td class="text-center">{{ r.files_found }}</td>
                                 <td class="text-center">{{ r.files_fetched }}</td>
                                 <td>
                                     {% if r.error %}
@@ -118,7 +114,7 @@
                                             <i class="mdi mdi-alert-circle"></i> Ошибка
                                         </span>
                                         <small class="text-danger ms-2">{{ r.error }}</small>
-                                    {% elif r.files_found == 0 %}
+                                    {% elif r.files_fetched == 0 %}
                                         <span class="badge bg-warning text-dark">
                                             <i class="mdi mdi-folder-open-outline"></i> Файлов не найдено
                                         </span>
