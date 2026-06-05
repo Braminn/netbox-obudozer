@@ -321,8 +321,7 @@ def gitlab_debug_view(request):
                 domain_rows[domain]['occurrences'].append({
                     'source_file': item['source_file'],
                     'source_project': item['source_project'],
-                    'chain_display': item['chain_display'],
-                    'status': item['status'],
+                    'targets': item['targets'],
                 })
             domain_table = sorted(domain_rows.values(), key=lambda x: x['domain'])
 
