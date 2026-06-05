@@ -288,11 +288,15 @@ def parse_configs(configs):
             if name not in domain_map or block.is_ssl:
                 domain_map[name] = block
 
-    results = []
+    # Group by (domain, source_file, source_project) so that multiple server blocks
+    # for the same domain in the same file (e.g. port-80 redirect + port-443 proxy)
+    # are merged into one entry with combined targets.
+    merged = {}
 
     for block in all_blocks:
         primary = block.server_names[0]
-        # Resolve from THIS block's own proxy_targets, not domain_map
+        key = (primary, block.source_file, block.source_project)
+
         targets = _resolve_targets(
             block.proxy_targets,
             domain_map,
@@ -301,12 +305,37 @@ def parse_configs(configs):
             visited={primary},
         )
 
+        if key not in merged:
+            merged[key] = {
+                'domain': primary,
+                'aliases': block.server_names[1:],
+                'targets': [],
+                'source_file': block.source_file,
+                'source_project': block.source_project,
+            }
+
+        # Merge targets — deduplicate by (ip, port, chain, is_loop)
+        existing = {(t.ip, t.port, tuple(t.chain), t.is_loop) for t in merged[key]['targets']}
+        for t in targets:
+            sig = (t.ip, t.port, tuple(t.chain), t.is_loop)
+            if sig not in existing:
+                merged[key]['targets'].append(t)
+                existing.add(sig)
+
+    results = []
+    for entry in merged.values():
+        targets = entry['targets']
+        # Drop the "nothing found" fallback if real targets were merged in from other blocks
+        real = [t for t in targets if t.ip or t.upstream_name or t.is_loop]
+        if real:
+            targets = real
+
         results.append(DomainResolution(
-            domain=primary,
-            aliases=block.server_names[1:],
+            domain=entry['domain'],
+            aliases=entry['aliases'],
             targets=targets,
-            source_file=block.source_file,
-            source_project=block.source_project,
+            source_file=entry['source_file'],
+            source_project=entry['source_project'],
         ))
 
     return results
