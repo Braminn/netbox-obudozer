@@ -40,7 +40,9 @@ def fetch_nginx_configs():
     gitlab_url = config.get('gitlab_url', '').rstrip('/')
     gitlab_token = config.get('gitlab_token', '')
     projects = config.get('gitlab_projects', [])
-    nginx_path = config.get('gitlab_nginx_path', 'sites-enabled')
+    nginx_path_cfg = config.get('gitlab_nginx_path', ['sites-enabled', 'sites-available'])
+    # Нормализуем: строка → список
+    nginx_paths = [nginx_path_cfg] if isinstance(nginx_path_cfg, str) else list(nginx_path_cfg)
     verify_ssl = config.get('gitlab_verify_ssl', True)
 
     if not gitlab_url:
@@ -60,15 +62,22 @@ def fetch_nginx_configs():
     for project_path in projects:
         report = {
             'project': project_path,
-            'nginx_path': nginx_path,
+            'nginx_path': ', '.join(nginx_paths),
             'files_found': 0,
             'files_fetched': 0,
             'file_errors': [],
             'error': None,
         }
-        logger.info('GitLab: fetching .conf files from %s/%s', project_path, nginx_path)
+        logger.info('GitLab: fetching .conf files from %s in %s', nginx_paths, project_path)
         try:
-            files = _list_conf_files(session, gitlab_url, project_path, nginx_path)
+            # Собираем файлы из всех папок, без дублей
+            seen_paths = set()
+            files = []
+            for nginx_path in nginx_paths:
+                for f in _list_conf_files(session, gitlab_url, project_path, nginx_path):
+                    if f not in seen_paths:
+                        seen_paths.add(f)
+                        files.append(f)
             report['files_found'] = len(files)
             logger.info('GitLab: found %d .conf files in %s', len(files), project_path)
 
