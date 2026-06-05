@@ -71,13 +71,17 @@ def fetch_nginx_configs():
         logger.info('GitLab: fetching .conf files from %s in %s', nginx_paths, project_path)
         try:
             # Собираем файлы из всех папок, без дублей
+            # Ошибка для одной папки (например 404) не прерывает перебор остальных
             seen_paths = set()
             files = []
             for nginx_path in nginx_paths:
-                for f in _list_conf_files(session, gitlab_url, project_path, nginx_path):
-                    if f not in seen_paths:
-                        seen_paths.add(f)
-                        files.append(f)
+                try:
+                    for f in _list_conf_files(session, gitlab_url, project_path, nginx_path):
+                        if f not in seen_paths:
+                            seen_paths.add(f)
+                            files.append(f)
+                except Exception as e:
+                    logger.debug('GitLab: %s/%s — %s', project_path, nginx_path, e)
             report['files_found'] = len(files)
             logger.info('GitLab: found %d .conf files in %s', len(files), project_path)
 
