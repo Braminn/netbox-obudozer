@@ -250,6 +250,9 @@ def gitlab_debug_view(request):
             configs_raw, project_reports = fetch_nginx_configs()
             resolutions = parse_configs(configs_raw)
 
+            from django.conf import settings as _settings
+            waf_ips = set(_settings.PLUGINS_CONFIG.get('netbox_obudozer', {}).get('waf_ips', []))
+
             # Обогащаем каждый результат: строим targets_display для каждого backend
             processed = []
             for r in resolutions:
@@ -273,10 +276,13 @@ def gitlab_debug_view(request):
                         'status': status,
                     })
 
+                is_waf = bool(waf_ips) and any(t.ip in waf_ips for t in r.targets if t.ip)
+
                 processed.append({
                     'domain': r.domain,
                     'aliases': r.aliases,
                     'targets': targets_display,
+                    'is_waf': is_waf,
                     'source_file': r.source_file,
                     'source_project': r.source_project,
                 })
@@ -317,12 +323,14 @@ def gitlab_debug_view(request):
             for item in processed:
                 domain = item['domain']
                 if domain not in domain_rows:
-                    domain_rows[domain] = {'domain': domain, 'occurrences': []}
+                    domain_rows[domain] = {'domain': domain, 'occurrences': [], 'is_waf': False}
                 domain_rows[domain]['occurrences'].append({
                     'source_file': item['source_file'],
                     'source_project': item['source_project'],
                     'targets': item['targets'],
                 })
+                if item['is_waf']:
+                    domain_rows[domain]['is_waf'] = True
             domain_table = sorted(domain_rows.values(), key=lambda x: x['domain'])
 
         except Exception as e:

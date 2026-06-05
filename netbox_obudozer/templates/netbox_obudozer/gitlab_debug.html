@@ -186,8 +186,13 @@
                                     {% endfor %}
                                 </td>
                                 <td class="text-center align-middle">
-                                    {# WAF — будет заполнено позже #}
-                                    <span class="text-muted">—</span>
+                                    {% if row.is_waf %}
+                                        <span class="badge bg-success">
+                                            <i class="mdi mdi-shield-check"></i> WAF
+                                        </span>
+                                    {% else %}
+                                        <span class="text-muted">—</span>
+                                    {% endif %}
                                 </td>
                                 <td class="text-center align-middle">
                                     {% for occ in row.occurrences %}
