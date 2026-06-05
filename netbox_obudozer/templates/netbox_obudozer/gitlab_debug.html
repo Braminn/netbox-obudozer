@@ -180,7 +180,9 @@
                                 </td>
                                 <td class="align-middle">
                                     {% for occ in row.occurrences %}
-                                        <div><small class="font-monospace text-break">{{ occ.chain_display }}</small></div>
+                                        {% for t in occ.targets %}
+                                        <div><small class="font-monospace text-break">{{ t.chain_display }}</small></div>
+                                        {% endfor %}
                                     {% endfor %}
                                 </td>
                                 <td class="text-center align-middle">
@@ -189,17 +191,19 @@
                                 </td>
                                 <td class="text-center align-middle">
                                     {% for occ in row.occurrences %}
-                                    <div>
-                                        {% if occ.status == 'direct' %}
-                                            <span class="badge bg-success"><i class="mdi mdi-check-circle"></i> IP</span>
-                                        {% elif occ.status == 'chained' %}
-                                            <span class="badge bg-success"><i class="mdi mdi-link-chain"></i> Цепочка</span>
-                                        {% elif occ.status == 'upstream' %}
-                                            <span class="badge bg-warning text-dark"><i class="mdi mdi-server-network"></i> Upstream</span>
-                                        {% else %}
-                                            <span class="badge bg-danger"><i class="mdi mdi-help-circle"></i> Не разрешён</span>
-                                        {% endif %}
-                                    </div>
+                                        {% for t in occ.targets %}
+                                        <div>
+                                            {% if t.status == 'direct' %}
+                                                <span class="badge bg-success"><i class="mdi mdi-check-circle"></i> IP</span>
+                                            {% elif t.status == 'chained' %}
+                                                <span class="badge bg-success"><i class="mdi mdi-link-chain"></i> Цепочка</span>
+                                            {% elif t.status == 'upstream' %}
+                                                <span class="badge bg-warning text-dark"><i class="mdi mdi-server-network"></i> Upstream</span>
+                                            {% else %}
+                                                <span class="badge bg-danger"><i class="mdi mdi-help-circle"></i> Не разрешён</span>
+                                            {% endif %}
+                                        </div>
+                                        {% endfor %}
                                     {% endfor %}
                                 </td>
                             </tr>
@@ -261,26 +265,32 @@
                                     {% endif %}
                                 </td>
                                 <td>
-                                    <small class="font-monospace text-break">{{ d.chain_display }}</small>
+                                    {% for t in d.targets %}
+                                    <div><small class="font-monospace text-break">{{ t.chain_display }}</small></div>
+                                    {% endfor %}
                                 </td>
                                 <td class="text-center">
-                                    {% if d.status == 'direct' %}
-                                        <span class="badge bg-success">
-                                            <i class="mdi mdi-check-circle"></i> IP
-                                        </span>
-                                    {% elif d.status == 'chained' %}
-                                        <span class="badge bg-success">
-                                            <i class="mdi mdi-link-chain"></i> Цепочка
-                                        </span>
-                                    {% elif d.status == 'upstream' %}
-                                        <span class="badge bg-warning text-dark">
-                                            <i class="mdi mdi-server-network"></i> Upstream
-                                        </span>
-                                    {% else %}
-                                        <span class="badge bg-danger">
-                                            <i class="mdi mdi-help-circle"></i> Не разрешён
-                                        </span>
-                                    {% endif %}
+                                    {% for t in d.targets %}
+                                    <div>
+                                        {% if t.status == 'direct' %}
+                                            <span class="badge bg-success">
+                                                <i class="mdi mdi-check-circle"></i> IP
+                                            </span>
+                                        {% elif t.status == 'chained' %}
+                                            <span class="badge bg-success">
+                                                <i class="mdi mdi-link-chain"></i> Цепочка
+                                            </span>
+                                        {% elif t.status == 'upstream' %}
+                                            <span class="badge bg-warning text-dark">
+                                                <i class="mdi mdi-server-network"></i> Upstream
+                                            </span>
+                                        {% else %}
+                                            <span class="badge bg-danger">
+                                                <i class="mdi mdi-help-circle"></i> Не разрешён
+                                            </span>
+                                        {% endif %}
+                                    </div>
+                                    {% endfor %}
                                 </td>
                             </tr>
                             {% endfor %}

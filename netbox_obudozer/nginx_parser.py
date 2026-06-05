@@ -2,16 +2,17 @@
 nginx config parser — extracts domain→IP mapping across proxy_pass chains.
 
 Handles:
-- Direct:   proxy_pass http://10.0.0.1:8080  → IP resolved immediately
-- Chained:  proxy_pass http://other.domain   → resolve recursively
-- Upstream: proxy_pass http://upstream_name  → marks upstream_name, takes first server IP if available
-- Comments: #proxy_pass ...                  → ignored
+- Direct:     proxy_pass http://10.0.0.1:8080  → IP resolved immediately
+- Conditional: multiple proxy_pass in if-blocks  → ALL IPs collected
+- Chained:    proxy_pass http://other.domain   → resolve recursively
+- Upstream:   proxy_pass http://upstream_name  → all server IPs from upstream block
+- Comments:   #proxy_pass ...                  → ignored
 - Multiple files: chains can span files
 """
 
 import re
 import ipaddress
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional
 from urllib.parse import urlparse
 
@@ -36,13 +37,18 @@ class ServerBlock:
 
 
 @dataclass
+class ResolvedTarget:
+    ip: Optional[str]
+    port: Optional[int]
+    chain: list              # ordered domain path leading to this IP
+    upstream_name: Optional[str]
+
+
+@dataclass
 class DomainResolution:
     domain: str
-    aliases: list               # other server_names from same block
-    final_ip: Optional[str]     # None if unresolved
-    final_port: Optional[int]
-    chain: list                 # full resolution path
-    upstream_name: Optional[str]  # set if proxy_pass points to nginx upstream group
+    aliases: list
+    targets: list            # list[ResolvedTarget] — all resolved backends
     source_file: str
     source_project: str
 
@@ -173,44 +179,68 @@ def _parse_server_block(text, source_file, source_project):
     )
 
 
-def _resolve(domain, domain_map, upstream_map, visited=frozenset()):
+def _resolve_all(domain, domain_map, upstream_map, path=None, visited=None):
     """
-    Recursively resolve domain → final IP.
-    Returns (ip, port, chain_list, upstream_name).
-    upstream_name is set when proxy_pass points to a nginx upstream group.
+    Recursively resolve ALL proxy_pass targets for a domain.
+
+    Unlike a single-result resolver, collects every IP found across
+    conditional branches (if-blocks), upstream groups, and proxy chains.
+
+    Returns list[ResolvedTarget]. Empty list if domain not in domain_map.
     """
+    if visited is None:
+        visited = set()
+    if path is None:
+        path = []
+
     if domain in visited:
-        return None, None, list(visited), None  # cycle
+        return []  # cycle — skip
 
     visited = visited | {domain}
+    current_path = path + [domain]
 
     if domain not in domain_map:
-        return None, None, list(visited), None
+        return []
 
+    results = []
     for target in domain_map[domain].proxy_targets:
         if target.is_ip:
-            return target.host, target.port, list(visited), None
-
-        # Check nginx upstream groups
-        if target.host in upstream_map:
+            results.append(ResolvedTarget(
+                ip=target.host,
+                port=target.port,
+                chain=current_path,
+                upstream_name=None,
+            ))
+        elif target.host in upstream_map:
             servers = upstream_map[target.host]
             if servers:
-                ip, port = servers[0]  # take first non-backup server
-                return ip, port, list(visited), target.host
-            # upstream block exists but no valid IP servers found
-            return None, None, list(visited), target.host
+                for ip, port in servers:
+                    results.append(ResolvedTarget(
+                        ip=ip,
+                        port=port,
+                        chain=current_path,
+                        upstream_name=target.host,
+                    ))
+            else:
+                results.append(ResolvedTarget(
+                    ip=None,
+                    port=None,
+                    chain=current_path,
+                    upstream_name=target.host,
+                ))
+        else:
+            sub = _resolve_all(target.host, domain_map, upstream_map, current_path, visited)
+            results.extend(sub)
 
-        # Try to follow proxy chain to another domain
-        ip, port, chain, upstream = _resolve(target.host, domain_map, upstream_map, visited)
-        if ip is not None or upstream is not None:
-            return ip, port, chain, upstream
+    if not results:
+        results.append(ResolvedTarget(ip=None, port=None, chain=current_path, upstream_name=None))
 
-    return None, None, list(visited), None
+    return results
 
 
 def parse_configs(configs):
     """
-    Parse nginx configs and resolve all domains to final IPs.
+    Parse nginx configs and resolve all domains to ALL their backend IPs.
 
     Args:
         configs: list of (config_text: str, source_file: str, source_project: str)
@@ -218,15 +248,14 @@ def parse_configs(configs):
     Returns:
         list of DomainResolution — one entry per unique primary domain.
         SSL (443) blocks take priority over HTTP-only blocks for same domain.
+        Each DomainResolution.targets contains ALL resolved backends.
     """
     all_blocks = []
     upstream_map = {}
 
     for content, source_file, source_project in configs:
-        # Collect upstream definitions from this file
         upstream_map.update(_extract_upstream_map(content))
 
-        # Parse server blocks
         for _, block_text in _extract_blocks_of_type(content, 'server'):
             block = _parse_server_block(block_text, source_file, source_project)
             if block:
@@ -248,15 +277,14 @@ def parse_configs(configs):
             continue
         seen.add(primary)
 
-        ip, port, chain, upstream_name = _resolve(primary, domain_map, upstream_map)
+        targets = _resolve_all(primary, domain_map, upstream_map)
+        if not targets:
+            targets = [ResolvedTarget(ip=None, port=None, chain=[primary], upstream_name=None)]
 
         results.append(DomainResolution(
             domain=primary,
             aliases=block.server_names[1:],
-            final_ip=ip,
-            final_port=port,
-            chain=chain,
-            upstream_name=upstream_name,
+            targets=targets,
             source_file=block.source_file,
             source_project=block.source_project,
         ))

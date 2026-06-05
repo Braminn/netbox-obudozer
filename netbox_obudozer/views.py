@@ -250,31 +250,33 @@ def gitlab_debug_view(request):
             configs_raw, project_reports = fetch_nginx_configs()
             resolutions = parse_configs(configs_raw)
 
-            # Обогащаем каждый результат строкой для отображения цепочки
+            # Обогащаем каждый результат: строим targets_display для каждого backend
             processed = []
             for r in resolutions:
-                chain_parts = list(r.chain)
-                if r.final_ip:
-                    ip_str = r.final_ip
-                    if r.final_port:
-                        ip_str += f':{r.final_port}'
-                    chain_parts.append(ip_str)
-                    status = 'chained' if len(r.chain) > 1 else 'direct'
-                elif r.upstream_name:
-                    chain_parts.append(f'[upstream: {r.upstream_name}]')
-                    status = 'upstream'
-                else:
-                    chain_parts.append('[не разрешён]')
-                    status = 'unresolved'
+                targets_display = []
+                for t in r.targets:
+                    chain_parts = list(t.chain)
+                    if t.ip:
+                        ip_str = t.ip
+                        if t.port:
+                            ip_str += f':{t.port}'
+                        chain_parts.append(ip_str)
+                        status = 'chained' if len(t.chain) > 1 else 'direct'
+                    elif t.upstream_name:
+                        chain_parts.append(f'[upstream: {t.upstream_name}]')
+                        status = 'upstream'
+                    else:
+                        chain_parts.append('[не разрешён]')
+                        status = 'unresolved'
+                    targets_display.append({
+                        'chain_display': ' → '.join(chain_parts),
+                        'status': status,
+                    })
 
                 processed.append({
                     'domain': r.domain,
                     'aliases': r.aliases,
-                    'final_ip': r.final_ip,
-                    'final_port': r.final_port,
-                    'upstream_name': r.upstream_name,
-                    'chain_display': ' → '.join(chain_parts),
-                    'status': status,
+                    'targets': targets_display,
                     'source_file': r.source_file,
                     'source_project': r.source_project,
                 })
@@ -299,9 +301,15 @@ def gitlab_debug_view(request):
             stats = {
                 'total_files': len(configs_raw),
                 'total_domains': len(resolutions),
-                'resolved': sum(1 for r in resolutions if r.final_ip),
-                'upstream': sum(1 for r in resolutions if r.upstream_name and not r.final_ip),
-                'unresolved': sum(1 for r in resolutions if not r.final_ip and not r.upstream_name),
+                'resolved': sum(1 for r in resolutions if any(t.ip for t in r.targets)),
+                'upstream': sum(
+                    1 for r in resolutions
+                    if not any(t.ip for t in r.targets) and any(t.upstream_name for t in r.targets)
+                ),
+                'unresolved': sum(
+                    1 for r in resolutions
+                    if not any(t.ip or t.upstream_name for t in r.targets)
+                ),
             }
 
             # Агрегация по доменному имени: один домен — все вхождения по файлам
