@@ -265,6 +265,8 @@ def gitlab_debug_view(request):
                             ip_str += f':{t.port}'
                         chain_parts.append(ip_str)
                         status = 'chained' if len(t.chain) > 1 else 'direct'
+                    elif t.is_loop:
+                        status = 'loop'
                     elif t.upstream_name:
                         chain_parts.append(f'[upstream: {t.upstream_name}]')
                         status = 'upstream'
@@ -304,17 +306,26 @@ def gitlab_debug_view(request):
                 for project, files in sorted(by_project.items())
             ]
 
+            unique_domains = {r.domain for r in resolutions}
             stats = {
                 'total_files': len(configs_raw),
-                'total_domains': len(resolutions),
-                'resolved': sum(1 for r in resolutions if any(t.ip for t in r.targets)),
+                'total_domains': len(unique_domains),
+                'resolved': sum(
+                    1 for d in unique_domains
+                    if any(t.ip for r in resolutions if r.domain == d for t in r.targets)
+                ),
                 'upstream': sum(
-                    1 for r in resolutions
-                    if not any(t.ip for t in r.targets) and any(t.upstream_name for t in r.targets)
+                    1 for d in unique_domains
+                    if not any(t.ip for r in resolutions if r.domain == d for t in r.targets)
+                    and any(t.upstream_name for r in resolutions if r.domain == d for t in r.targets)
                 ),
                 'unresolved': sum(
-                    1 for r in resolutions
-                    if not any(t.ip or t.upstream_name for t in r.targets)
+                    1 for d in unique_domains
+                    if not any(
+                        t.ip or t.upstream_name
+                        for r in resolutions if r.domain == d
+                        for t in r.targets
+                    )
                 ),
             }
 

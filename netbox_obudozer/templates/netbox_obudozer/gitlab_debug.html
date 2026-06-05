@@ -204,6 +204,8 @@
                                                 <span class="badge bg-success"><i class="mdi mdi-link-chain"></i> Цепочка</span>
                                             {% elif t.status == 'upstream' %}
                                                 <span class="badge bg-warning text-dark"><i class="mdi mdi-server-network"></i> Upstream</span>
+                                            {% elif t.status == 'loop' %}
+                                                <span class="badge bg-secondary"><i class="mdi mdi-autorenew"></i> Петля</span>
                                             {% else %}
                                                 <span class="badge bg-danger"><i class="mdi mdi-help-circle"></i> Не разрешён</span>
                                             {% endif %}
@@ -288,6 +290,10 @@
                                         {% elif t.status == 'upstream' %}
                                             <span class="badge bg-warning text-dark">
                                                 <i class="mdi mdi-server-network"></i> Upstream
+                                            </span>
+                                        {% elif t.status == 'loop' %}
+                                            <span class="badge bg-secondary">
+                                                <i class="mdi mdi-autorenew"></i> Петля
                                             </span>
                                         {% else %}
                                             <span class="badge bg-danger">
