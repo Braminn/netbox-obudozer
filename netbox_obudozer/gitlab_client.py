@@ -28,7 +28,10 @@ def fetch_nginx_configs():
     Fetch all *.conf files from every project listed in gitlab_projects.
 
     Returns:
-        list of (content: str, file_path: str, project_path: str)
+        tuple: (
+            configs: list of (content: str, file_path: str, project_path: str),
+            project_reports: list of dicts with per-project status
+        )
 
     Raises:
         ValueError: if required settings are missing
@@ -52,25 +55,41 @@ def fetch_nginx_configs():
     session.verify = verify_ssl
 
     all_configs = []
+    project_reports = []
 
     for project_path in projects:
+        report = {
+            'project': project_path,
+            'nginx_path': nginx_path,
+            'files_found': 0,
+            'files_fetched': 0,
+            'file_errors': [],
+            'error': None,
+        }
         logger.info('GitLab: fetching .conf files from %s/%s', project_path, nginx_path)
         try:
             files = _list_conf_files(session, gitlab_url, project_path, nginx_path)
+            report['files_found'] = len(files)
             logger.info('GitLab: found %d .conf files in %s', len(files), project_path)
 
             for file_path in files:
                 try:
                     content = _get_file_content(session, gitlab_url, project_path, file_path)
                     all_configs.append((content, file_path, project_path))
+                    report['files_fetched'] += 1
                 except Exception as e:
+                    msg = f'{file_path}: {e}'
+                    report['file_errors'].append(msg)
                     logger.warning('GitLab: skipping %s — %s', file_path, e)
 
         except Exception as e:
+            report['error'] = str(e)
             logger.error('GitLab: failed to process project %s — %s', project_path, e)
 
+        project_reports.append(report)
+
     logger.info('GitLab: fetched %d .conf files total', len(all_configs))
-    return all_configs
+    return all_configs, project_reports
 
 
 def _list_conf_files(session, gitlab_url, project_path, nginx_path):

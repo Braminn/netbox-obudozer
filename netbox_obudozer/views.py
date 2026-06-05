@@ -236,6 +236,7 @@ def gitlab_debug_view(request):
     показывает результат по каждому файлу без сохранения в БД.
     """
     results_by_file = None
+    project_reports = None
     stats = None
     error = None
 
@@ -245,7 +246,7 @@ def gitlab_debug_view(request):
             from .gitlab_client import fetch_nginx_configs
             from .nginx_parser import parse_configs
 
-            configs_raw = fetch_nginx_configs()
+            configs_raw, project_reports = fetch_nginx_configs()
             resolutions = parse_configs(configs_raw)
 
             # Обогащаем каждый результат строкой для отображения цепочки
@@ -308,6 +309,7 @@ def gitlab_debug_view(request):
 
     return render(request, 'netbox_obudozer/gitlab_debug.html', {
         'results_by_file': results_by_file,
+        'project_reports': project_reports,
         'stats': stats,
         'error': error,
     })
