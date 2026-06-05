@@ -147,6 +147,71 @@
     </div>
     {% endif %}
 
+    <!-- Сводная таблица доменов -->
+    {% if domain_table %}
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">
+                        <i class="mdi mdi-earth"></i> Домены
+                        <span class="badge bg-secondary ms-2">{{ domain_table|length }}</span>
+                    </h5>
+                </div>
+                <div class="card-body p-0">
+                    <table class="table table-sm table-hover mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th style="width: 22%">Домен</th>
+                                <th style="width: 22%">Конфиги</th>
+                                <th>Цепочка разрешения</th>
+                                <th style="width: 8%" class="text-center">WAF</th>
+                                <th style="width: 12%" class="text-center">Результат</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for row in domain_table %}
+                            <tr>
+                                <td class="align-middle"><code>{{ row.domain }}</code></td>
+                                <td class="align-middle">
+                                    {% for occ in row.occurrences %}
+                                        <div><small class="text-muted font-monospace text-break">{{ occ.source_project }} / {{ occ.source_file }}</small></div>
+                                    {% endfor %}
+                                </td>
+                                <td class="align-middle">
+                                    {% for occ in row.occurrences %}
+                                        <div><small class="font-monospace text-break">{{ occ.chain_display }}</small></div>
+                                    {% endfor %}
+                                </td>
+                                <td class="text-center align-middle">
+                                    {# WAF — будет заполнено позже #}
+                                    <span class="text-muted">—</span>
+                                </td>
+                                <td class="text-center align-middle">
+                                    {% for occ in row.occurrences %}
+                                    <div>
+                                        {% if occ.status == 'direct' %}
+                                            <span class="badge bg-success"><i class="mdi mdi-check-circle"></i> IP</span>
+                                        {% elif occ.status == 'chained' %}
+                                            <span class="badge bg-success"><i class="mdi mdi-link-chain"></i> Цепочка</span>
+                                        {% elif occ.status == 'upstream' %}
+                                            <span class="badge bg-warning text-dark"><i class="mdi mdi-server-network"></i> Upstream</span>
+                                        {% else %}
+                                            <span class="badge bg-danger"><i class="mdi mdi-help-circle"></i> Не разрешён</span>
+                                        {% endif %}
+                                    </div>
+                                    {% endfor %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
     <!-- Результаты по проектам и файлам -->
     {% if results_by_file %}
 

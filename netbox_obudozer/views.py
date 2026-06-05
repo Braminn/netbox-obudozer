@@ -237,6 +237,7 @@ def gitlab_debug_view(request):
     """
     results_by_file = None
     project_reports = None
+    domain_table = None
     stats = None
     error = None
 
@@ -303,6 +304,20 @@ def gitlab_debug_view(request):
                 'unresolved': sum(1 for r in resolutions if not r.final_ip and not r.upstream_name),
             }
 
+            # Агрегация по доменному имени: один домен — все вхождения по файлам
+            domain_rows = {}
+            for item in processed:
+                domain = item['domain']
+                if domain not in domain_rows:
+                    domain_rows[domain] = {'domain': domain, 'occurrences': []}
+                domain_rows[domain]['occurrences'].append({
+                    'source_file': item['source_file'],
+                    'source_project': item['source_project'],
+                    'chain_display': item['chain_display'],
+                    'status': item['status'],
+                })
+            domain_table = sorted(domain_rows.values(), key=lambda x: x['domain'])
+
         except Exception as e:
             import traceback
             error = f'{e}\n\n{traceback.format_exc()}'
@@ -310,6 +325,7 @@ def gitlab_debug_view(request):
     return render(request, 'netbox_obudozer/gitlab_debug.html', {
         'results_by_file': results_by_file,
         'project_reports': project_reports,
+        'domain_table': domain_table,
         'stats': stats,
         'error': error,
     })
