@@ -487,6 +487,11 @@ class NginxDomainDetailView(ObjectView):
     queryset = NginxDomain.objects.all()
 
 
+@register_model_view(NginxDomain, 'delete')
+class NginxDomainDeleteView(ObjectDeleteView):
+    queryset = NginxDomain.objects.all()
+
+
 @register_model_view(NginxDomain, 'bulk_delete', detail=False)
 class NginxDomainBulkDeleteView(BulkDeleteView):
     queryset = NginxDomain.objects.all()

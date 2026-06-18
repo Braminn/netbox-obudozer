@@ -77,6 +77,8 @@ class NginxDomainTable(NetBoxTable):
 
     class Meta(NetBoxTable.Meta):
         model = NginxDomain
-        fields = ('domain', 'nginx_status', 'nginx_is_waf', 'last_updated')
+        fields = ('domain', 'nginx_status', 'nginx_is_waf', 'last_updated', 'actions')
         default_columns = ('domain', 'nginx_status', 'nginx_is_waf', 'last_updated')
+        # Домены только импортируются — кнопки edit нет, только delete
+        actions = ('delete',)
 
