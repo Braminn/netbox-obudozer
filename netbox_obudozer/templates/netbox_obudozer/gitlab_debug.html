@@ -152,11 +152,22 @@
     <div class="row mb-4">
         <div class="col-12">
             <div class="card">
-                <div class="card-header">
+                <div class="card-header d-flex align-items-center justify-content-between">
                     <h5 class="card-title mb-0">
                         <i class="mdi mdi-earth"></i> Домены
                         <span class="badge bg-secondary ms-2">{{ domain_table|length }}</span>
                     </h5>
+                    <div class="d-flex align-items-center gap-2">
+                        <a href="{% url 'plugins:netbox_obudozer:nginxdomain_list' %}" class="btn btn-sm btn-outline-secondary">
+                            <i class="mdi mdi-open-in-new"></i> Страница доменов
+                        </a>
+                        <button id="btn-import-db" class="btn btn-sm btn-success">
+                            <i class="mdi mdi-database-import"></i> Импортировать в БД
+                        </button>
+                    </div>
+                </div>
+                <div id="import-db-result" class="d-none px-3 pt-2 pb-0">
+                    <div id="import-db-alert" class="alert py-2 mb-2"></div>
                 </div>
                 <div class="card-body p-0">
                     <table class="table table-sm table-hover mb-0">
@@ -329,4 +340,44 @@
     {% endif %}
 
 </div>
+
+<script>
+(function () {
+    const btn = document.getElementById('btn-import-db');
+    if (!btn) return;
+    btn.addEventListener('click', function () {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="mdi mdi-loading mdi-spin"></i> Импортируется...';
+        fetch('{% url "plugins:netbox_obudozer:import_nginx_domains" %}', {
+            method: 'POST',
+            headers: {'X-CSRFToken': '{{ csrf_token }}'},
+        })
+        .then(r => r.json())
+        .then(data => {
+            const block = document.getElementById('import-db-result');
+            const alert = document.getElementById('import-db-alert');
+            block.classList.remove('d-none');
+            if (data.success) {
+                alert.className = 'alert alert-success py-2 mb-2';
+                alert.innerHTML = `<i class="mdi mdi-check-circle"></i> Готово: создано <b>${data.created}</b>, обновлено <b>${data.updated}</b>, без изменений <b>${data.skipped}</b>` +
+                    (data.errors.length ? `<br><span class="text-danger">Ошибки: ${data.errors.join(', ')}</span>` : '');
+            } else {
+                alert.className = 'alert alert-danger py-2 mb-2';
+                alert.innerHTML = `<i class="mdi mdi-alert-circle"></i> Ошибка: ${data.error}`;
+            }
+            btn.disabled = false;
+            btn.innerHTML = '<i class="mdi mdi-database-import"></i> Импортировать в БД';
+        })
+        .catch(e => {
+            const block = document.getElementById('import-db-result');
+            const alert = document.getElementById('import-db-alert');
+            block.classList.remove('d-none');
+            alert.className = 'alert alert-danger py-2 mb-2';
+            alert.innerHTML = `<i class="mdi mdi-alert-circle"></i> Ошибка сети: ${e}`;
+            btn.disabled = false;
+            btn.innerHTML = '<i class="mdi mdi-database-import"></i> Импортировать в БД';
+        });
+    });
+})();
+</script>
 {% endblock %}

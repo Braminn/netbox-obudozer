@@ -25,4 +25,9 @@ urlpatterns = [
 
     # Автоматическая генерация URL для ObuServices (detail, edit, delete)
     path('obu-services/<int:pk>/', include(get_model_urls('netbox_obudozer', 'obuservices'))),
+
+    # Nginx domains
+    path('nginx-domains/', include(get_model_urls('netbox_obudozer', 'nginxdomain', detail=False))),
+    path('nginx-domains/<int:pk>/', include(get_model_urls('netbox_obudozer', 'nginxdomain'))),
+    path('import-nginx-domains/', views.import_nginx_domains_view, name='import_nginx_domains'),
 ]

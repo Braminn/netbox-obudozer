@@ -1,0 +1,70 @@
+{% extends 'generic/object.html' %}
+{% load helpers %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header"><strong>Домен</strong></div>
+            <table class="table table-hover attr-table">
+                <tr>
+                    <th scope="row">Имя</th>
+                    <td><code>{{ object.domain }}</code></td>
+                </tr>
+                <tr>
+                    <th scope="row">Статус</th>
+                    <td>
+                        {% with s=object.custom_field_data.nginx_status %}
+                        {% if s == 'direct' %}<span class="badge bg-success">IP</span>
+                        {% elif s == 'chained' %}<span class="badge bg-success">Цепочка</span>
+                        {% elif s == 'upstream' %}<span class="badge bg-warning text-dark">Upstream</span>
+                        {% elif s == 'loop' %}<span class="badge bg-info text-white">Петля</span>
+                        {% elif s == 'unresolved' %}<span class="badge bg-danger">Не разрешён</span>
+                        {% else %}—{% endif %}
+                        {% endwith %}
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row">WAF</th>
+                    <td>
+                        {% if object.custom_field_data.nginx_is_waf %}
+                        <span class="badge bg-success"><i class="mdi mdi-shield-check"></i> WAF</span>
+                        {% else %}—{% endif %}
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row">Обновлено</th>
+                    <td>{{ object.last_updated }}</td>
+                </tr>
+            </table>
+        </div>
+
+        <div class="card mt-3">
+            <div class="card-header"><strong>Конфигурационные файлы</strong></div>
+            <div class="card-body">
+                {% with configs=object.custom_field_data.nginx_configs %}
+                {% if configs %}
+                <pre class="mb-0" style="font-size:13px;">{{ configs }}</pre>
+                {% else %}—{% endif %}
+                {% endwith %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header"><strong>Цепочки разрешения</strong></div>
+            <div class="card-body">
+                {% with targets=object.custom_field_data.nginx_targets %}
+                {% if targets %}
+                <pre class="mb-0" style="font-size:13px;">{{ targets }}</pre>
+                {% else %}—{% endif %}
+                {% endwith %}
+            </div>
+        </div>
+
+        {% include 'inc/panels/custom_fields.html' %}
+        {% include 'inc/panels/tags.html' %}
+    </div>
+</div>
+{% endblock content %}

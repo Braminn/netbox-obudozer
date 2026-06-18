@@ -116,6 +116,28 @@ class ServiceVMAssignment(models.Model):
         return f'{self.service.name} → {self.virtual_machine.name}'
 
 
+class NginxDomain(NetBoxModel):
+    """Домен из nginx-конфигов GitLab. Один объект = одно уникальное доменное имя."""
+
+    domain = models.CharField(
+        max_length=500,
+        unique=True,
+        verbose_name='Домен',
+    )
+
+    class Meta:
+        ordering = ['domain']
+        verbose_name = 'Nginx домен'
+        verbose_name_plural = 'Nginx домены'
+
+    def __str__(self):
+        return self.domain
+
+    def get_absolute_url(self):
+        from django.urls import reverse
+        return reverse('plugins:netbox_obudozer:nginxdomain', kwargs={'pk': self.pk})
+
+
 class VCenterSyncAccess(models.Model):
     """
     Модель без таблицы — только для управления правами доступа к синхронизации vCenter.

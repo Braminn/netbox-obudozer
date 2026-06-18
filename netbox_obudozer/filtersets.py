@@ -5,7 +5,7 @@ FilterSets для плагина netbox_obudozer
 """
 from django.db.models import Q
 from netbox.filtersets import NetBoxModelFilterSet
-from .models import ObuServices
+from .models import ObuServices, NginxDomain
 
 
 class ObuServicesFilterSet(NetBoxModelFilterSet):
@@ -27,3 +27,12 @@ class ObuServicesFilterSet(NetBoxModelFilterSet):
             Q(name__icontains=value) |
             Q(description__icontains=value)
         )
+
+
+class NginxDomainFilterSet(NetBoxModelFilterSet):
+    class Meta:
+        model = NginxDomain
+        fields = ['id', 'domain']
+
+    def search(self, queryset, name, value):
+        return queryset.filter(Q(domain__icontains=value))

@@ -43,6 +43,17 @@ menu = PluginMenu(
                 )
             ),
         )),
+        ('GitLab', (
+            PluginMenuItem(
+                link='plugins:netbox_obudozer:nginxdomain_list',
+                link_text='Nginx домены',
+                permissions=['netbox_obudozer.view_nginxdomain'],
+            ),
+            PluginMenuItem(
+                link='plugins:netbox_obudozer:gitlab_debug',
+                link_text='GitLab Debug',
+            ),
+        )),
     ),
     icon_class='mdi mdi-briefcase'
 )

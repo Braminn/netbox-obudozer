@@ -21,10 +21,10 @@ from utilities.views import register_model_view
 
 from .sync import get_sync_status
 from .jobs import VCenterSyncJob
-from .models import ObuServices
-from .tables import ObuServicesTable
+from .models import ObuServices, NginxDomain
+from .tables import ObuServicesTable, NginxDomainTable
 from .forms import ObuServicesForm, ObuServicesBulkEditForm
-from .filtersets import ObuServicesFilterSet
+from .filtersets import ObuServicesFilterSet, NginxDomainFilterSet
 
 
 @permission_required('netbox_obudozer.view_vcentersyncaccess')
@@ -469,3 +469,44 @@ class ObuServicesBulkDeleteView(BulkDeleteView):
     """
     queryset = ObuServices.objects.all()
     table = ObuServicesTable
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# NginxDomain views
+# ──────────────────────────────────────────────────────────────────────────────
+
+@register_model_view(NginxDomain, 'list', detail=False)
+class NginxDomainListView(ObjectListView):
+    queryset = NginxDomain.objects.all()
+    table = NginxDomainTable
+    filterset = NginxDomainFilterSet
+
+
+@register_model_view(NginxDomain)
+class NginxDomainDetailView(ObjectView):
+    queryset = NginxDomain.objects.all()
+
+
+@register_model_view(NginxDomain, 'bulk_delete', detail=False)
+class NginxDomainBulkDeleteView(BulkDeleteView):
+    queryset = NginxDomain.objects.all()
+    table = NginxDomainTable
+
+
+def import_nginx_domains_view(request):
+    """POST — запускает импорт доменов из GitLab и возвращает JSON со статистикой."""
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+    try:
+        from .nginx_import import import_nginx_domains
+        result = import_nginx_domains()
+        return JsonResponse({
+            'success': True,
+            'created': result['created'],
+            'updated': result['updated'],
+            'skipped': result['skipped'],
+            'errors': result['errors'],
+        })
+    except Exception as e:
+        import traceback
+        return JsonResponse({'success': False, 'error': str(e), 'traceback': traceback.format_exc()}, status=500)
