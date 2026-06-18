@@ -133,6 +133,12 @@ def _ensure_nginx_custom_fields():
             'description': 'Список project/file, в которых встречается домен',
             'required': False,
         }),
+        ('nginx_waf_single_ip', {
+            'label': 'Только WAF IP',
+            'type': 'boolean',
+            'description': 'True — все resolved IP ведут только на WAF (нет второго IP)',
+            'required': False,
+        }),
     ]
 
     created_fields = []
@@ -182,13 +188,16 @@ def import_nginx_domains():
         for r in res_list:
             all_targets.extend(_resolution_targets_as_dicts(r))
 
-        is_waf = bool(waf_ips) and any(t['ip'] in waf_ips for t in all_targets if t.get('ip'))
+        resolved_ips = [t['ip'] for t in all_targets if t.get('ip')]
+        is_waf = bool(waf_ips) and any(ip in waf_ips for ip in resolved_ips)
+        waf_single_ip = bool(resolved_ips) and bool(waf_ips) and all(ip in waf_ips for ip in resolved_ips)
         targets_text = _build_targets_text(all_targets)
         configs_text = _build_configs_text(res_list)
         status = _best_status(all_targets)
 
         aggregated[domain] = {
             'nginx_is_waf': is_waf,
+            'nginx_waf_single_ip': waf_single_ip,
             'nginx_targets': targets_text,
             'nginx_configs': configs_text,
             'nginx_status': status,
