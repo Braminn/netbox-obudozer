@@ -9,7 +9,7 @@ from utilities.forms.fields import CommentField, DynamicModelChoiceField, Dynami
 from virtualization.models import VirtualMachine
 from tenancy.models import Tenant
 from dcim.models import DeviceRole
-from .models import ObuServices, ServiceVMAssignment
+from .models import ObuServices, ServiceVMAssignment, NginxDomain
 
 
 class ObuServicesForm(NetBoxModelForm):
@@ -108,3 +108,9 @@ class ObuServicesBulkEditForm(NetBoxModelBulkEditForm):
 
     model = ObuServices
     nullable_fields = ['description', 'tenant']
+
+
+class NginxDomainForm(NetBoxModelForm):
+    class Meta:
+        model = NginxDomain
+        fields = ('domain', 'tags')

@@ -23,7 +23,7 @@ from .sync import get_sync_status
 from .jobs import VCenterSyncJob
 from .models import ObuServices, NginxDomain
 from .tables import ObuServicesTable, NginxDomainTable
-from .forms import ObuServicesForm, ObuServicesBulkEditForm
+from .forms import ObuServicesForm, ObuServicesBulkEditForm, NginxDomainForm
 from .filtersets import ObuServicesFilterSet, NginxDomainFilterSet
 
 
@@ -485,6 +485,13 @@ class NginxDomainListView(ObjectListView):
 @register_model_view(NginxDomain)
 class NginxDomainDetailView(ObjectView):
     queryset = NginxDomain.objects.all()
+
+
+@register_model_view(NginxDomain, 'add', detail=False)
+@register_model_view(NginxDomain, 'edit')
+class NginxDomainEditView(ObjectEditView):
+    queryset = NginxDomain.objects.all()
+    form = NginxDomainForm
 
 
 @register_model_view(NginxDomain, 'delete')
