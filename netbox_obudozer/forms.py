@@ -4,7 +4,7 @@
 Определяет формы для редактирования моделей.
 """
 from django import forms
-from netbox.forms import NetBoxModelForm, NetBoxModelBulkEditForm
+from netbox.forms import NetBoxModelForm, NetBoxModelBulkEditForm, NetBoxModelFilterSetForm
 from utilities.forms.fields import CommentField, DynamicModelChoiceField, DynamicModelMultipleChoiceField
 from virtualization.models import VirtualMachine
 from tenancy.models import Tenant
@@ -114,3 +114,7 @@ class NginxDomainForm(NetBoxModelForm):
     class Meta:
         model = NginxDomain
         fields = ('domain', 'tags')
+
+
+class NginxDomainFilterForm(NetBoxModelFilterSetForm):
+    model = NginxDomain

@@ -1,46 +1,16 @@
-{% extends 'base/layout.html' %}
-{% load buttons %}
-{% load render_table from django_tables2 %}
+{% extends 'generic/object_list.html' %}
 
-{% block title %}Nginx домены{% endblock %}
-
-{% block content %}
-<div class="container-fluid">
-    <div class="row mb-3">
-        <div class="col-12 d-flex align-items-center justify-content-between">
-            <h1 class="mb-0">
-                <i class="mdi mdi-web"></i> Nginx домены
-            </h1>
-            <button id="btn-import" class="btn btn-primary">
-                <i class="mdi mdi-database-import"></i> Импортировать из GitLab
-            </button>
-        </div>
-    </div>
-
-    <div id="import-result" class="row mb-3 d-none">
-        <div class="col-12">
-            <div id="import-alert" class="alert mb-0"></div>
-        </div>
-    </div>
-
-    <div class="row">
-        <div class="col-12">
-            <div class="card">
-                <div class="card-body">
-                    {% if table.data %}
-                        {% render_table table %}
-                    {% else %}
-                        <div class="text-muted text-center py-4">
-                            <i class="mdi mdi-information-outline"></i>
-                            Домены не найдены. Нажмите «Импортировать из GitLab» для загрузки.
-                        </div>
-                    {% endif %}
-                </div>
-            </div>
-        </div>
-    </div>
+{% block extra_controls %}
+<div id="import-result" class="me-2 d-none">
+    <div id="import-alert" class="alert alert-sm py-1 mb-0"></div>
 </div>
+<button id="btn-import" class="btn btn-success btn-sm">
+    <i class="mdi mdi-database-import"></i> Импортировать из GitLab
+</button>
+{% endblock extra_controls %}
 
+{% block javascript %}
+{{ block.super }}
 <script>
 document.getElementById('btn-import').addEventListener('click', function () {
     const btn = this;
@@ -57,11 +27,12 @@ document.getElementById('btn-import').addEventListener('click', function () {
         const alert = document.getElementById('import-alert');
         block.classList.remove('d-none');
         if (data.success) {
-            alert.className = 'alert alert-success mb-0';
-            alert.innerHTML = `<i class="mdi mdi-check-circle"></i> Готово: создано <b>${data.created}</b>, обновлено <b>${data.updated}</b>, без изменений <b>${data.skipped}</b>${data.errors.length ? '<br><span class="text-danger">Ошибки: ' + data.errors.join(', ') + '</span>' : ''}`;
+            alert.className = 'alert alert-success py-1 mb-0';
+            alert.innerHTML = `<i class="mdi mdi-check-circle"></i> Создано: <b>${data.created}</b>, обновлено: <b>${data.updated}</b>, без изменений: <b>${data.skipped}</b>` +
+                (data.errors.length ? `<br><span class="text-danger">Ошибки: ${data.errors.join(', ')}</span>` : '');
             setTimeout(() => location.reload(), 1500);
         } else {
-            alert.className = 'alert alert-danger mb-0';
+            alert.className = 'alert alert-danger py-1 mb-0';
             alert.innerHTML = `<i class="mdi mdi-alert-circle"></i> Ошибка: ${data.error}`;
             btn.disabled = false;
             btn.innerHTML = '<i class="mdi mdi-database-import"></i> Импортировать из GitLab';
@@ -71,11 +42,11 @@ document.getElementById('btn-import').addEventListener('click', function () {
         const block = document.getElementById('import-result');
         const alert = document.getElementById('import-alert');
         block.classList.remove('d-none');
-        alert.className = 'alert alert-danger mb-0';
+        alert.className = 'alert alert-danger py-1 mb-0';
         alert.innerHTML = `<i class="mdi mdi-alert-circle"></i> Ошибка сети: ${e}`;
         btn.disabled = false;
         btn.innerHTML = '<i class="mdi mdi-database-import"></i> Импортировать из GitLab';
     });
 });
 </script>
-{% endblock %}
+{% endblock javascript %}
