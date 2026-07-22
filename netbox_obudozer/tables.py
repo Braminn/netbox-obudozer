@@ -49,7 +49,14 @@ class ObuServicesTable(NetBoxTable):
 
 
 class NginxDomainTable(NetBoxTable):
-    domain = tables.Column(linkify=True, verbose_name='Домен')
+    domain = tables.TemplateColumn(
+        verbose_name='Домен',
+        order_by='domain',
+        template_code="""
+<a href="{{ record.get_absolute_url }}">{{ record.domain }}</a>
+{% if record.domain_unicode %}<br><small class="text-muted">{{ record.domain_unicode }}</small>{% endif %}
+""",
+    )
     nginx_status = tables.TemplateColumn(
         verbose_name='Статус',
         orderable=False,

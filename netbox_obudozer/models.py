@@ -137,6 +137,21 @@ class NginxDomain(NetBoxModel):
         from django.urls import reverse
         return reverse('plugins:netbox_obudozer:nginxdomain', kwargs={'pk': self.pk})
 
+    @property
+    def domain_unicode(self):
+        """
+        Кириллическое (или иное юникодное) представление домена, если он в формате
+        Punycode/IDNA (например, xn--80aacoonefzg3am8b1fsb.xn--p1ai → банкобувь.рф).
+        Возвращает None, если домен не содержит меток xn-- или декодирование не удалось.
+        """
+        if 'xn--' not in self.domain.lower():
+            return None
+        try:
+            decoded = self.domain.encode('ascii').decode('idna')
+        except (UnicodeError, UnicodeDecodeError):
+            return None
+        return decoded if decoded != self.domain else None
+
 
 class VCenterSyncAccess(models.Model):
     """
