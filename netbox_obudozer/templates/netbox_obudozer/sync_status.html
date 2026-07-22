@@ -177,6 +177,29 @@
         </div>
     </div>
 
+    <!-- GitLab — Проверка подключения -->
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">
+                        <i class="mdi mdi-gitlab"></i> GitLab — Конфигурации nginx
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted">
+                        Загрузить .conf файлы из GitLab и разобрать nginx-конфиги.
+                        Настройте <code>gitlab_url</code>, <code>gitlab_token</code>, <code>gitlab_projects</code>
+                        и <code>gitlab_nginx_path</code> в <code>PLUGINS_CONFIG</code>.
+                    </p>
+                    <a href="{% url 'plugins:netbox_obudozer:gitlab_debug' %}" class="btn btn-outline-primary">
+                        <i class="mdi mdi-bug-outline"></i> Открыть отладчик конфигов
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Информация -->
     <div class="row mt-4">
         <div class="col-12">

@@ -26,6 +26,11 @@ menu = PluginMenu(
                     ),
                 )
             ),
+            PluginMenuItem(
+                link='plugins:netbox_obudozer:nginxdomain_list',
+                link_text='Домены Nginx',
+                permissions=['netbox_obudozer.view_nginxdomain'],
+            ),
         )),
         ('vCenter', (
             PluginMenuItem(

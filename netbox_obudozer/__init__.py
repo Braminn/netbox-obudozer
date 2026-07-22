@@ -15,7 +15,7 @@ class ObudozerPluginConfig(PluginConfig):
     name = 'netbox_obudozer'
     verbose_name = 'NetBox Obudozer Plugin'
     description = 'Плагин управления ресурсами ЦОД с интеграцией VMware vCenter'
-    version = '0.3.1'
+    version = '0.4.0'
     author = 'Stegantsev Victor'
     author_email = 'your.email@example.com'
     base_url = 'obudozer'
@@ -35,6 +35,12 @@ class ObudozerPluginConfig(PluginConfig):
         # Настройки синхронизации
         'sync_enabled': True,
         'auto_sync_interval': 3600,  # секунды (1 час)
+
+        # Настройки GitLab
+        'gitlab_url': '',
+        'gitlab_token': '',
+        'gitlab_projects': [],       # список project ID или 'group/repo'
+        'gitlab_verify_ssl': True,
     }
     min_version = '4.4.0'
     template_extensions = 'template_extensions.template_extensions'

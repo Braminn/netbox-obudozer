@@ -1,0 +1,383 @@
+{% extends 'base/layout.html' %}
+
+{% block title %}GitLab — Отладка nginx конфигов{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+
+    <div class="row mb-3">
+        <div class="col-12 d-flex align-items-center gap-3">
+            <h1 class="mb-0">
+                <i class="mdi mdi-bug-outline"></i> GitLab — Отладка nginx конфигов
+            </h1>
+            <a href="{% url 'plugins:netbox_obudozer:sync_vcenter' %}" class="btn btn-sm btn-outline-secondary">
+                <i class="mdi mdi-arrow-left"></i> Назад
+            </a>
+        </div>
+    </div>
+
+    <!-- Кнопка запуска -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-body">
+                    <p class="text-muted mb-3">
+                        Загружает все <code>.conf</code> файлы из папки <code>gitlab_nginx_path</code>
+                        в каждом репозитории и разбирает nginx-блоки: домены, proxy_pass, цепочки.
+                        Данные не сохраняются в БД.
+                    </p>
+                    <form method="post">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-primary">
+                            <i class="mdi mdi-download"></i> Загрузить и разобрать конфиги
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Ошибка -->
+    {% if error %}
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="alert alert-danger">
+                <h6><i class="mdi mdi-alert-circle"></i> Ошибка</h6>
+                <pre class="mb-0" style="white-space: pre-wrap; font-size: 13px;">{{ error }}</pre>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Статистика -->
+    {% if stats %}
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0"><i class="mdi mdi-chart-bar"></i> Итог</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row text-center">
+                        <div class="col">
+                            <div class="text-muted small">Файлов загружено</div>
+                            <div class="h4">{{ stats.total_files }}</div>
+                        </div>
+                        <div class="col">
+                            <div class="text-muted small">Доменов найдено</div>
+                            <div class="h4">{{ stats.total_domains }}</div>
+                        </div>
+                        <div class="col">
+                            <div class="text-muted small">IP разрешён</div>
+                            <div class="h4 text-success">{{ stats.resolved }}</div>
+                        </div>
+                        <div class="col">
+                            <div class="text-muted small">Upstream</div>
+                            <div class="h4 text-warning">{{ stats.upstream }}</div>
+                        </div>
+                        <div class="col">
+                            <div class="text-muted small">Не разрешён</div>
+                            <div class="h4 text-danger">{{ stats.unresolved }}</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Статус по каждому проекту -->
+    {% if project_reports %}
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0"><i class="mdi mdi-source-repository"></i> Статус репозиториев</h5>
+                </div>
+                <div class="card-body p-0">
+                    <table class="table table-sm mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Репозиторий</th>
+                                <th class="text-center">Найдено .conf</th>
+                                <th>Статус</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for r in project_reports %}
+                            <tr>
+                                <td><code>{{ r.project }}</code></td>
+                                <td class="text-center">{{ r.files_fetched }}</td>
+                                <td>
+                                    {% if r.error %}
+                                        <span class="badge bg-danger">
+                                            <i class="mdi mdi-alert-circle"></i> Ошибка
+                                        </span>
+                                        <small class="text-danger ms-2">{{ r.error }}</small>
+                                    {% elif r.files_fetched == 0 %}
+                                        <span class="badge bg-warning text-dark">
+                                            <i class="mdi mdi-folder-open-outline"></i> Файлов не найдено
+                                        </span>
+                                    {% elif r.file_errors %}
+                                        <span class="badge bg-warning text-dark">
+                                            <i class="mdi mdi-alert"></i> Частично ({{ r.file_errors|length }} ошибок)
+                                        </span>
+                                    {% else %}
+                                        <span class="badge bg-success">
+                                            <i class="mdi mdi-check-circle"></i> OK
+                                        </span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% if r.file_errors %}
+                            <tr>
+                                <td colspan="5" class="py-1 ps-4">
+                                    <small class="text-danger">
+                                        {% for fe in r.file_errors %}{{ fe }}<br>{% endfor %}
+                                    </small>
+                                </td>
+                            </tr>
+                            {% endif %}
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Сводная таблица доменов -->
+    {% if domain_table %}
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex align-items-center justify-content-between">
+                    <h5 class="card-title mb-0">
+                        <i class="mdi mdi-earth"></i> Домены
+                        <span class="badge bg-secondary ms-2">{{ domain_table|length }}</span>
+                    </h5>
+                    <div class="d-flex align-items-center gap-2">
+                        <a href="{% url 'plugins:netbox_obudozer:nginxdomain_list' %}" class="btn btn-sm btn-outline-secondary">
+                            <i class="mdi mdi-open-in-new"></i> Страница доменов
+                        </a>
+                        <button id="btn-import-db" class="btn btn-sm btn-success">
+                            <i class="mdi mdi-database-import"></i> Импортировать в БД
+                        </button>
+                    </div>
+                </div>
+                <div id="import-db-result" class="d-none px-3 pt-2 pb-0">
+                    <div id="import-db-alert" class="alert py-2 mb-2"></div>
+                </div>
+                <div class="card-body p-0">
+                    <table class="table table-sm table-hover mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th style="width: 22%">Домен</th>
+                                <th style="width: 22%">Конфиги</th>
+                                <th>Цепочка разрешения</th>
+                                <th style="width: 8%" class="text-center">WAF</th>
+                                <th style="width: 12%" class="text-center">Результат</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for row in domain_table %}
+                            <tr>
+                                <td class="align-middle"><code>{{ row.domain }}</code></td>
+                                <td class="align-middle">
+                                    {% for occ in row.occurrences %}
+                                        <div><small class="text-muted font-monospace text-break">{{ occ.source_project }} / {{ occ.source_file }}</small></div>
+                                    {% endfor %}
+                                </td>
+                                <td class="align-middle">
+                                    {% for occ in row.occurrences %}
+                                        {% for t in occ.targets %}
+                                        <div><small class="font-monospace text-break">{{ t.chain_display }}</small></div>
+                                        {% endfor %}
+                                    {% endfor %}
+                                </td>
+                                <td class="text-center align-middle">
+                                    {% if row.is_waf %}
+                                        <span class="badge bg-success">
+                                            <i class="mdi mdi-shield-check"></i> WAF
+                                        </span>
+                                    {% else %}
+                                        <span class="text-muted">—</span>
+                                    {% endif %}
+                                </td>
+                                <td class="text-center align-middle">
+                                    {% for occ in row.occurrences %}
+                                        {% for t in occ.targets %}
+                                        <div>
+                                            {% if t.status == 'direct' %}
+                                                <span class="badge bg-success"><i class="mdi mdi-check-circle"></i> IP</span>
+                                            {% elif t.status == 'chained' %}
+                                                <span class="badge bg-success"><i class="mdi mdi-link-chain"></i> Цепочка</span>
+                                            {% elif t.status == 'upstream' %}
+                                                <span class="badge bg-warning text-dark"><i class="mdi mdi-server-network"></i> Upstream</span>
+                                            {% elif t.status == 'loop' %}
+                                                <span class="badge bg-info text-white"><i class="mdi mdi-autorenew"></i> Петля</span>
+                                            {% else %}
+                                                <span class="badge bg-danger"><i class="mdi mdi-help-circle"></i> Не разрешён</span>
+                                            {% endif %}
+                                        </div>
+                                        {% endfor %}
+                                    {% endfor %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Результаты по проектам и файлам -->
+    {% if results_by_file %}
+
+    {% for project_entry in results_by_file %}
+    <div class="row mb-2">
+        <div class="col-12">
+            <h5 class="text-muted border-bottom pb-1">
+                <i class="mdi mdi-gitlab"></i> {{ project_entry.project }}
+            </h5>
+        </div>
+    </div>
+
+    {% for file_entry in project_entry.files %}
+    <div class="row mb-3">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center py-2">
+                    <span>
+                        <i class="mdi mdi-file-document-outline text-muted"></i>
+                        <code class="ms-1">{{ file_entry.path }}</code>
+                    </span>
+                    <span class="badge bg-secondary">{{ file_entry.domains|length }}</span>
+                </div>
+
+                {% if file_entry.domains %}
+                <div class="card-body p-0">
+                    <table class="table table-sm table-hover mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th style="width: 22%">Домен</th>
+                                <th style="width: 20%">Псевдонимы</th>
+                                <th>Цепочка разрешения</th>
+                                <th style="width: 15%" class="text-center">Результат</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for d in file_entry.domains %}
+                            <tr>
+                                <td><code>{{ d.domain }}</code></td>
+                                <td>
+                                    {% if d.aliases %}
+                                        <small class="text-muted">
+                                            {% for alias in d.aliases %}<code>{{ alias }}</code>{% if not forloop.last %} {% endif %}{% endfor %}
+                                        </small>
+                                    {% else %}
+                                        <span class="text-muted">—</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% for t in d.targets %}
+                                    <div><small class="font-monospace text-break">{{ t.chain_display }}</small></div>
+                                    {% endfor %}
+                                </td>
+                                <td class="text-center">
+                                    {% for t in d.targets %}
+                                    <div>
+                                        {% if t.status == 'direct' %}
+                                            <span class="badge bg-success">
+                                                <i class="mdi mdi-check-circle"></i> IP
+                                            </span>
+                                        {% elif t.status == 'chained' %}
+                                            <span class="badge bg-success">
+                                                <i class="mdi mdi-link-chain"></i> Цепочка
+                                            </span>
+                                        {% elif t.status == 'upstream' %}
+                                            <span class="badge bg-warning text-dark">
+                                                <i class="mdi mdi-server-network"></i> Upstream
+                                            </span>
+                                        {% elif t.status == 'loop' %}
+                                            <span class="badge bg-secondary">
+                                                <i class="mdi mdi-autorenew"></i> Петля
+                                            </span>
+                                        {% else %}
+                                            <span class="badge bg-danger">
+                                                <i class="mdi mdi-help-circle"></i> Не разрешён
+                                            </span>
+                                        {% endif %}
+                                    </div>
+                                    {% endfor %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="card-body text-muted">
+                    <small>Доменов не найдено (нет server_name или proxy_pass)</small>
+                </div>
+                {% endif %}
+
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+
+    {% endfor %}
+
+    {% elif stats %}
+    <div class="alert alert-warning">
+        <i class="mdi mdi-alert"></i>
+        Конфигов не найдено. Проверьте <code>gitlab_projects</code> и <code>gitlab_nginx_path</code>.
+    </div>
+    {% endif %}
+
+</div>
+
+<script>
+(function () {
+    const btn = document.getElementById('btn-import-db');
+    if (!btn) return;
+    btn.addEventListener('click', function () {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="mdi mdi-loading mdi-spin"></i> Импортируется...';
+        fetch('{% url "plugins:netbox_obudozer:import_nginx_domains" %}', {
+            method: 'POST',
+            headers: {'X-CSRFToken': '{{ csrf_token }}'},
+        })
+        .then(r => r.json())
+        .then(data => {
+            const block = document.getElementById('import-db-result');
+            const alert = document.getElementById('import-db-alert');
+            block.classList.remove('d-none');
+            if (data.success) {
+                alert.className = 'alert alert-success py-2 mb-2';
+                alert.innerHTML = `<i class="mdi mdi-check-circle"></i> Готово: создано <b>${data.created}</b>, обновлено <b>${data.updated}</b>, без изменений <b>${data.skipped}</b>` +
+                    (data.errors.length ? `<br><span class="text-danger">Ошибки: ${data.errors.join(', ')}</span>` : '');
+            } else {
+                alert.className = 'alert alert-danger py-2 mb-2';
+                alert.innerHTML = `<i class="mdi mdi-alert-circle"></i> Ошибка: ${data.error}`;
+            }
+            btn.disabled = false;
+            btn.innerHTML = '<i class="mdi mdi-database-import"></i> Импортировать в БД';
+        })
+        .catch(e => {
+            const block = document.getElementById('import-db-result');
+            const alert = document.getElementById('import-db-alert');
+            block.classList.remove('d-none');
+            alert.className = 'alert alert-danger py-2 mb-2';
+            alert.innerHTML = `<i class="mdi mdi-alert-circle"></i> Ошибка сети: ${e}`;
+            btn.disabled = false;
+            btn.innerHTML = '<i class="mdi mdi-database-import"></i> Импортировать в БД';
+        });
+    });
+})();
+</script>
+{% endblock %}
