@@ -32,6 +32,27 @@ menu = PluginMenu(
                 permissions=['netbox_obudozer.view_nginxdomain'],
             ),
         )),
+        ('Версии ОС', (
+            PluginMenuItem(
+                link='plugins:netbox_obudozer:operatingsystem_list',
+                link_text='Реестр версий ОС',
+                permissions=['netbox_obudozer.view_operatingsystem'],
+                buttons=(
+                    PluginMenuButton(
+                        link='plugins:netbox_obudozer:operatingsystem_add',
+                        title='Добавить',
+                        icon_class='mdi mdi-plus-thick',
+                        color=ButtonColorChoices.GREEN,
+                        permissions=['netbox_obudozer.add_operatingsystem']
+                    ),
+                )
+            ),
+            PluginMenuItem(
+                link='plugins:netbox_obudozer:eol_dashboard',
+                link_text='Устаревшие ОС',
+                permissions=['netbox_obudozer.view_eolaccess'],
+            ),
+        )),
         ('vCenter', (
             PluginMenuItem(
                 link='plugins:netbox_obudozer:sync_vcenter',

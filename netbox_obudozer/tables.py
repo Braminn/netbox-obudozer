@@ -3,7 +3,7 @@
 """
 import django_tables2 as tables
 from netbox.tables import NetBoxTable, columns
-from .models import ObuServices, NginxDomain
+from .models import ObuServices, NginxDomain, OperatingSystem
 
 
 class ObuServicesTable(NetBoxTable):
@@ -86,4 +86,25 @@ class NginxDomainTable(NetBoxTable):
         model = NginxDomain
         fields = ('domain', 'nginx_status', 'nginx_is_waf', 'last_updated', 'actions')
         default_columns = ('domain', 'nginx_status', 'nginx_is_waf', 'last_updated')
+
+
+class OperatingSystemTable(NetBoxTable):
+    name = tables.Column(linkify=True, verbose_name='Версия ОС')
+    eol_date = tables.DateColumn(verbose_name='Дата окончания поддержки')
+    eol_status = tables.TemplateColumn(
+        verbose_name='Статус',
+        orderable=False,
+        template_code="""
+{% if record.eol_status == 'expired' %}<span class="badge bg-danger">Просрочено</span>
+{% elif record.eol_status == 'soon' %}<span class="badge bg-warning text-dark">Скоро истекает</span>
+{% elif record.eol_status == 'ok' %}<span class="badge bg-success">OK</span>
+{% else %}<span class="badge bg-secondary">Дата не задана</span>{% endif %}
+""",
+    )
+    vm_count = tables.Column(verbose_name='Количество VM', orderable=False)
+
+    class Meta(NetBoxTable.Meta):
+        model = OperatingSystem
+        fields = ('name', 'eol_date', 'eol_status', 'vm_count', 'created', 'last_updated')
+        default_columns = ('name', 'eol_date', 'eol_status', 'vm_count')
 

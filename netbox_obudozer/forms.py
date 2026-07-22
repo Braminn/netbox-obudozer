@@ -6,10 +6,11 @@
 from django import forms
 from netbox.forms import NetBoxModelForm, NetBoxModelBulkEditForm, NetBoxModelFilterSetForm
 from utilities.forms.fields import CommentField, DynamicModelChoiceField, DynamicModelMultipleChoiceField
+from utilities.forms.widgets import DatePicker
 from virtualization.models import VirtualMachine
 from tenancy.models import Tenant
 from dcim.models import DeviceRole
-from .models import ObuServices, ServiceVMAssignment, NginxDomain
+from .models import ObuServices, ServiceVMAssignment, NginxDomain, OperatingSystem
 
 
 class ObuServicesForm(NetBoxModelForm):
@@ -118,3 +119,19 @@ class NginxDomainForm(NetBoxModelForm):
 
 class NginxDomainFilterForm(NetBoxModelFilterSetForm):
     model = NginxDomain
+
+
+class OperatingSystemForm(NetBoxModelForm):
+    eol_date = forms.DateField(
+        required=False,
+        label='Дата окончания поддержки',
+        widget=DatePicker(),
+    )
+
+    class Meta:
+        model = OperatingSystem
+        fields = ('name', 'eol_date', 'tags')
+
+
+class OperatingSystemFilterForm(NetBoxModelFilterSetForm):
+    model = OperatingSystem

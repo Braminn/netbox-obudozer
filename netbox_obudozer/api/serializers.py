@@ -6,7 +6,7 @@ API сериализаторы для плагина netbox_obudozer
 from rest_framework import serializers
 from netbox.api.serializers import NetBoxModelSerializer
 from virtualization.models import VirtualMachine
-from ..models import ObuServices, ServiceVMAssignment, NginxDomain
+from ..models import ObuServices, ServiceVMAssignment, NginxDomain, OperatingSystem
 
 
 class ServiceVMAssignmentSerializer(serializers.ModelSerializer):
@@ -65,6 +65,23 @@ class NginxDomainSerializer(NetBoxModelSerializer):
             'tags', 'custom_fields', 'created', 'last_updated',
         )
         brief_fields = ('id', 'url', 'display', 'domain')
+
+
+class OperatingSystemSerializer(NetBoxModelSerializer):
+    url = serializers.HyperlinkedIdentityField(
+        view_name='plugins-api:netbox_obudozer-api:operatingsystem-detail'
+    )
+
+    eol_status = serializers.CharField(read_only=True)
+    vm_count = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        model = OperatingSystem
+        fields = (
+            'id', 'url', 'display', 'name', 'eol_date', 'eol_status', 'vm_count',
+            'tags', 'custom_fields', 'created', 'last_updated',
+        )
+        brief_fields = ('id', 'url', 'display', 'name', 'eol_date', 'eol_status')
 
 
 class ObuServicesSerializer(NetBoxModelSerializer):

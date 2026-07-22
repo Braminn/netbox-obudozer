@@ -30,4 +30,11 @@ urlpatterns = [
     path('nginx-domains/', include(get_model_urls('netbox_obudozer', 'nginxdomain', detail=False))),
     path('nginx-domains/<int:pk>/', include(get_model_urls('netbox_obudozer', 'nginxdomain'))),
     path('import-nginx-domains/', views.import_nginx_domains_view, name='import_nginx_domains'),
+
+    # Реестр версий ОС
+    path('operating-systems/', include(get_model_urls('netbox_obudozer', 'operatingsystem', detail=False))),
+    path('operating-systems/<int:pk>/', include(get_model_urls('netbox_obudozer', 'operatingsystem'))),
+
+    # Дашборд устаревших ОС
+    path('eol-dashboard/', views.eol_dashboard_view, name='eol_dashboard'),
 ]

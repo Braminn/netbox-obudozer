@@ -21,10 +21,10 @@ from utilities.views import register_model_view
 
 from .sync import get_sync_status
 from .jobs import VCenterSyncJob
-from .models import ObuServices, NginxDomain
-from .tables import ObuServicesTable, NginxDomainTable
-from .forms import ObuServicesForm, ObuServicesBulkEditForm, NginxDomainForm, NginxDomainFilterForm
-from .filtersets import ObuServicesFilterSet, NginxDomainFilterSet
+from .models import ObuServices, NginxDomain, OperatingSystem
+from .tables import ObuServicesTable, NginxDomainTable, OperatingSystemTable
+from .forms import ObuServicesForm, ObuServicesBulkEditForm, NginxDomainForm, NginxDomainFilterForm, OperatingSystemForm, OperatingSystemFilterForm
+from .filtersets import ObuServicesFilterSet, NginxDomainFilterSet, OperatingSystemFilterSet
 
 
 @permission_required('netbox_obudozer.view_vcentersyncaccess')
@@ -523,3 +523,83 @@ def import_nginx_domains_view(request):
     except Exception as e:
         import traceback
         return JsonResponse({'success': False, 'error': str(e), 'traceback': traceback.format_exc()}, status=500)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# OperatingSystem views
+# ──────────────────────────────────────────────────────────────────────────────
+
+@register_model_view(OperatingSystem, 'list', detail=False)
+class OperatingSystemListView(ObjectListView):
+    queryset = OperatingSystem.objects.all()
+    table = OperatingSystemTable
+    filterset = OperatingSystemFilterSet
+    filterset_form = OperatingSystemFilterForm
+
+
+@register_model_view(OperatingSystem)
+class OperatingSystemDetailView(ObjectView):
+    queryset = OperatingSystem.objects.all()
+
+    def get_extra_context(self, request, instance):
+        from virtualization.models import VirtualMachine
+        vms = VirtualMachine.objects.filter(custom_field_data__os_pretty_name=instance.name)
+        return {'vms': vms}
+
+
+@register_model_view(OperatingSystem, 'add', detail=False)
+@register_model_view(OperatingSystem, 'edit')
+class OperatingSystemEditView(ObjectEditView):
+    queryset = OperatingSystem.objects.all()
+    form = OperatingSystemForm
+
+
+@register_model_view(OperatingSystem, 'delete')
+class OperatingSystemDeleteView(ObjectDeleteView):
+    queryset = OperatingSystem.objects.all()
+
+
+@register_model_view(OperatingSystem, 'bulk_delete', detail=False)
+class OperatingSystemBulkDeleteView(BulkDeleteView):
+    queryset = OperatingSystem.objects.all()
+    table = OperatingSystemTable
+
+
+@permission_required('netbox_obudozer.view_eolaccess')
+def eol_dashboard_view(request):
+    """
+    Дашборд VM с устаревшей ОС.
+
+    Показывает виртуальные машины, чья версия ОС (по custom field os_pretty_name)
+    зарегистрирована в реестре OperatingSystem с датой окончания поддержки
+    в прошлом ('expired') либо в ближайшие eol_warning_days дней ('soon').
+    """
+    from virtualization.models import VirtualMachine
+
+    tracked = [
+        os for os in OperatingSystem.objects.exclude(eol_date__isnull=True)
+        if os.eol_status in ('expired', 'soon')
+    ]
+    os_by_name = {os.name: os for os in tracked}
+
+    rows = []
+    if os_by_name:
+        # OR из экзакт-матчей по ключу JSONField (надёжнее, чем __in по key-transform),
+        # остаётся одним SQL-запросом
+        from django.db.models import Q
+        q = Q()
+        for name in os_by_name:
+            q |= Q(custom_field_data__os_pretty_name=name)
+        vms = VirtualMachine.objects.filter(q).order_by('name')
+        for vm in vms:
+            os_obj = os_by_name.get(vm.custom_field_data.get('os_pretty_name'))
+            if os_obj:
+                rows.append({'vm': vm, 'os': os_obj})
+
+    rows.sort(key=lambda r: (0 if r['os'].eol_status == 'expired' else 1, r['os'].eol_date))
+
+    return render(request, 'netbox_obudozer/eol_dashboard.html', {
+        'rows': rows,
+        'expired_count': sum(1 for r in rows if r['os'].eol_status == 'expired'),
+        'soon_count': sum(1 for r in rows if r['os'].eol_status == 'soon'),
+    })

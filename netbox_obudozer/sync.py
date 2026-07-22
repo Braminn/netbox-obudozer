@@ -951,6 +951,29 @@ def sync_vcenter_vms(logger=None) -> SyncResult:
         if logger:
             logger.info(f"  ✓ Получено {len(vcenter_vms)} VM из vCenter")
 
+        # Регистрируем новые версии ОС в реестре OperatingSystem (для отслеживания EOL).
+        # Вспомогательная операция: её сбой не должен прерывать синхронизацию ВМ.
+        try:
+            from .models import OperatingSystem
+
+            pretty_names = {
+                vm_data['os_pretty_name']
+                for vm_data in vcenter_vms
+                if vm_data.get('os_pretty_name')
+            }
+            if pretty_names:
+                existing_os_names = set(
+                    OperatingSystem.objects.filter(name__in=pretty_names).values_list('name', flat=True)
+                )
+                new_os_names = pretty_names - existing_os_names
+                for name in new_os_names:
+                    OperatingSystem.objects.get_or_create(name=name)
+                if new_os_names and logger:
+                    logger.info(f"  ✓ Зарегистрировано новых версий ОС: {len(new_os_names)}")
+        except Exception as e:
+            if logger:
+                logger.warning(f"  ⚠ Не удалось обновить реестр версий ОС: {e}")
+
         # Получаем ВСЕ существующие VM (из любых кластеров)
         # Включая старый vcenter_obu - они автоматически переместятся при обновлении
         if logger:

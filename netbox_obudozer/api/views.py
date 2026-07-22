@@ -6,8 +6,8 @@ API Views (ViewSets) для плагина netbox_obudozer
 from django.db.models import Count
 from rest_framework.viewsets import ModelViewSet
 from netbox.api.viewsets import NetBoxModelViewSet
-from ..models import ObuServices, ServiceVMAssignment, NginxDomain
-from .serializers import ObuServicesSerializer, ServiceVMAssignmentSerializer, NginxDomainSerializer
+from ..models import ObuServices, ServiceVMAssignment, NginxDomain, OperatingSystem
+from .serializers import ObuServicesSerializer, ServiceVMAssignmentSerializer, NginxDomainSerializer, OperatingSystemSerializer
 
 
 class ServiceVMAssignmentViewSet(ModelViewSet):
@@ -24,6 +24,11 @@ class ServiceVMAssignmentViewSet(ModelViewSet):
 class NginxDomainViewSet(NetBoxModelViewSet):
     queryset = NginxDomain.objects.all()
     serializer_class = NginxDomainSerializer
+
+
+class OperatingSystemViewSet(NetBoxModelViewSet):
+    queryset = OperatingSystem.objects.all()
+    serializer_class = OperatingSystemSerializer
 
 
 class ObuServicesViewSet(NetBoxModelViewSet):

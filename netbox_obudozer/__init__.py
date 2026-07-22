@@ -41,6 +41,9 @@ class ObudozerPluginConfig(PluginConfig):
         'gitlab_token': '',
         'gitlab_projects': [],       # список project ID или 'group/repo'
         'gitlab_verify_ssl': True,
+
+        # Настройки отслеживания EOL версий ОС
+        'eol_warning_days': 90,      # за сколько дней до eol_date статус становится "скоро истекает"
     }
     min_version = '4.4.0'
     template_extensions = 'template_extensions.template_extensions'

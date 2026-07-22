@@ -153,6 +153,83 @@ class NginxDomain(NetBoxModel):
         return decoded if decoded != self.domain else None
 
 
+def _get_eol_warning_days():
+    """Порог 'скоро истекает поддержка' в днях из PLUGINS_CONFIG (по умолчанию 90)."""
+    from django.conf import settings
+    config = settings.PLUGINS_CONFIG.get('netbox_obudozer', {})
+    return config.get('eol_warning_days', 90)
+
+
+class OperatingSystem(NetBoxModel):
+    """
+    Реестр версий ОС виртуальных машин с датой окончания поддержки (EOL).
+
+    name соответствует значению custom field 'os_pretty_name', заполняемому
+    при синхронизации с vCenter. Записи создаются автоматически при синхронизации
+    для каждой новой встреченной версии ОС; дату окончания поддержки администратор
+    проставляет вручную.
+    """
+
+    name = models.CharField(
+        max_length=255,
+        unique=True,
+        verbose_name='Версия ОС',
+        help_text='Значение OS Pretty Name из vCenter',
+    )
+
+    eol_date = models.DateField(
+        blank=True,
+        null=True,
+        verbose_name='Дата окончания поддержки',
+    )
+
+    class Meta:
+        ordering = ['name']
+        verbose_name = 'Версия ОС'
+        verbose_name_plural = 'Версии ОС'
+
+    def __str__(self):
+        return self.name
+
+    def get_absolute_url(self):
+        from django.urls import reverse
+        return reverse('plugins:netbox_obudozer:operatingsystem', kwargs={'pk': self.pk})
+
+    @property
+    def eol_status(self):
+        """'unknown' / 'ok' / 'soon' / 'expired' относительно текущей даты."""
+        if not self.eol_date:
+            return 'unknown'
+        from datetime import timedelta
+        from django.utils import timezone
+        today = timezone.now().date()
+        if self.eol_date < today:
+            return 'expired'
+        if self.eol_date <= today + timedelta(days=_get_eol_warning_days()):
+            return 'soon'
+        return 'ok'
+
+    @property
+    def vm_count(self):
+        return VirtualMachine.objects.filter(custom_field_data__os_pretty_name=self.name).count()
+
+
+class EolAccess(models.Model):
+    """
+    Модель без таблицы — только для управления правом доступа к дашборду устаревших ОС.
+    Таблица в БД не создаётся (managed=False).
+    """
+
+    class Meta:
+        managed = False
+        default_permissions = ()
+        verbose_name = 'Доступ к дашборду устаревших ОС'
+        verbose_name_plural = 'Доступ к дашборду устаревших ОС'
+        permissions = [
+            ('view_eolaccess', 'Доступ к странице устаревших ОС'),
+        ]
+
+
 class VCenterSyncAccess(models.Model):
     """
     Модель без таблицы — только для управления правами доступа к синхронизации vCenter.

@@ -1,0 +1,89 @@
+{% extends 'base/layout.html' %}
+
+{% block title %}Устаревшие ОС{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <h1>
+                <i class="mdi mdi-alert-decagram"></i>
+                Виртуальные машины с устаревшей ОС
+            </h1>
+            <hr>
+        </div>
+    </div>
+
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-3">
+                            <div class="small text-muted">Просрочено</div>
+                            <div class="h3 text-danger">
+                                <i class="mdi mdi-alert-circle"></i> {{ expired_count }}
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="small text-muted">Скоро истекает</div>
+                            <div class="h3 text-warning">
+                                <i class="mdi mdi-clock-alert"></i> {{ soon_count }}
+                            </div>
+                        </div>
+                    </div>
+                    <p class="text-muted mb-0 mt-3">
+                        Список строится по реестру
+                        <a href="{% url 'plugins:netbox_obudozer:operatingsystem_list' %}">Версии ОС</a>,
+                        сопоставленному с полем <code>os_pretty_name</code> у виртуальных машин.
+                        Версии без указанной даты окончания поддержки в список не попадают —
+                        заполните дату в реестре, чтобы начать отслеживание.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-body p-0">
+                    {% if rows %}
+                    <table class="table table-hover mb-0">
+                        <thead>
+                            <tr>
+                                <th>Виртуальная машина</th>
+                                <th>Версия ОС</th>
+                                <th>Дата окончания поддержки</th>
+                                <th>Статус</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for row in rows %}
+                            <tr>
+                                <td><a href="{{ row.vm.get_absolute_url }}">{{ row.vm.name }}</a></td>
+                                <td><a href="{{ row.os.get_absolute_url }}">{{ row.os.name }}</a></td>
+                                <td>{{ row.os.eol_date }}</td>
+                                <td>
+                                    {% if row.os.eol_status == 'expired' %}
+                                        <span class="badge bg-danger">Просрочено</span>
+                                    {% else %}
+                                        <span class="badge bg-warning text-dark">Скоро истекает</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                    {% else %}
+                    <div class="text-muted text-center py-4">
+                        <i class="mdi mdi-check-circle-outline"></i>
+                        Нет VM с просроченной или истекающей поддержкой ОС.
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

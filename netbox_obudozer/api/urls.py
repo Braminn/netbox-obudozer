@@ -4,7 +4,7 @@ API URL маршруты для плагина netbox_obudozer
 Регистрирует ViewSet'ы в роутере для автоматической генерации REST API endpoints.
 """
 from rest_framework import routers
-from .views import ObuServicesViewSet, ServiceVMAssignmentViewSet, NginxDomainViewSet
+from .views import ObuServicesViewSet, ServiceVMAssignmentViewSet, NginxDomainViewSet, OperatingSystemViewSet
 
 
 # Создаем роутер для автоматической регистрации ViewSet'ов
@@ -24,6 +24,7 @@ router.register('obu-services', ObuServicesViewSet)
 # Endpoints: /api/plugins/netbox-obudozer/vm-assignments/
 router.register('vm-assignments', ServiceVMAssignmentViewSet)
 router.register('nginx-domains', NginxDomainViewSet)
+router.register('operating-systems', OperatingSystemViewSet)
 
 # Экспортируем URL patterns из роутера
 urlpatterns = router.urls
