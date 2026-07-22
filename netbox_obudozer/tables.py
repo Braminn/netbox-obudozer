@@ -98,7 +98,7 @@ class OperatingSystemTable(NetBoxTable):
 {% if record.eol_status == 'expired' %}<span class="badge bg-danger">Просрочено</span>
 {% elif record.eol_status == 'soon' %}<span class="badge bg-warning text-dark">Скоро истекает</span>
 {% elif record.eol_status == 'ok' %}<span class="badge bg-success">OK</span>
-{% else %}<span class="badge bg-secondary">Дата не задана</span>{% endif %}
+{% else %}<span class="badge bg-secondary text-white">Дата не задана</span>{% endif %}
 """,
     )
     vm_count = tables.Column(verbose_name='Количество VM', orderable=False)
