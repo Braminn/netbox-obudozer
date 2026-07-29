@@ -19,6 +19,36 @@ from extras.models import CustomField
 from .vmware import get_vcenter_vms, test_vcenter_connection, get_cluster_group_name, get_cluster_type
 
 
+# Custom field "Порядок восстановления ВМ" (vm_restore_order).
+# Значения берутся из CustomFieldChoiceSet:
+#   '1' - экстренный, '2' - желательно, '3' - базовый, '4' - не включать.
+# При синхронизации всем ВМ с ПУСТЫМ полем проставляется базовый ('3'),
+# заполненное значение НЕ перезаписывается.
+RESTORE_ORDER_FIELD = 'vm_restore_order'
+RESTORE_ORDER_DEFAULT = '3'
+
+
+def ensure_restore_order_default(vm) -> bool:
+    """
+    Проставляет базовый порядок восстановления ('3'), если поле пустое.
+
+    Уже заполненное значение оставляет без изменений.
+
+    Args:
+        vm: Экземпляр VirtualMachine.
+
+    Returns:
+        bool: True если значение было проставлено (ВМ нужно сохранить),
+              False если поле уже заполнено.
+    """
+    cf = vm.custom_field_data or {}
+    if not cf.get(RESTORE_ORDER_FIELD):
+        vm.custom_field_data = cf
+        vm.custom_field_data[RESTORE_ORDER_FIELD] = RESTORE_ORDER_DEFAULT
+        return True
+    return False
+
+
 class SyncResult:
     """
     Результат выполнения синхронизации.
@@ -519,6 +549,8 @@ def apply_changes(
                 vm.custom_field_data['os_kernel_version'] = vm_data.get('os_kernel_version')
                 vm.custom_field_data['os_bitness'] = vm_data.get('os_bitness')
                 vm.custom_field_data['creation_date'] = vm_data.get('creation_date')
+                # Новая ВМ — поле заведомо пустое, проставляем базовый порядок
+                ensure_restore_order_default(vm)
                 vm.save()
 
                 # Синхронизируем диски для только что созданной VM
@@ -584,6 +616,8 @@ def apply_changes(
 
                 vm.custom_field_data = vm.custom_field_data or {}
                 vm.custom_field_data['last_synced'] = sync_time.isoformat()
+                # Базовый порядок восстановления, если поле ещё пустое
+                ensure_restore_order_default(vm)
                 vm.save()
                 # NetBox автоматически создаст ObjectChange запись
 
@@ -621,6 +655,12 @@ def apply_changes(
                     # Синхронизируем диски (изменения будут только если диски реально изменились)
                     sync_vm_disks(vm, vm_data.get('disks', []))
 
+                # Базовый порядок восстановления для неизменённых ВМ с пустым полем.
+                # Сохраняем только если реально проставили значение — иначе
+                # не создаём лишних записей об изменении.
+                if ensure_restore_order_default(vm):
+                    vm.save()
+
                 # Логируем каждую 100-ую VM или последнюю (для неизмененных реже логируем)
                 if logger and (idx % 100 == 0 or idx == len(diff.to_skip)):
                     logger.info(f"    ✓ Проверено дисков: {idx}/{len(diff.to_skip)} VM")
@@ -651,6 +691,8 @@ def apply_changes(
             for idx, vm in enumerate(missing_vms, 1):
                 vm.custom_field_data = vm.custom_field_data or {}
                 vm.custom_field_data['last_synced'] = sync_time.isoformat()
+                # Базовый порядок восстановления, если поле ещё пустое
+                ensure_restore_order_default(vm)
                 vm.save()
 
                 # Логируем каждую 10-ую VM или последнюю
