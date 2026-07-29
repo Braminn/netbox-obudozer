@@ -14,7 +14,7 @@ from django.db import transaction
 from django.utils import timezone
 from django.contrib.contenttypes.models import ContentType
 from virtualization.models import ClusterType, Cluster, ClusterGroup, VirtualMachine, VirtualDisk
-from extras.models import CustomField
+from extras.models import CustomField, CustomFieldChoiceSet
 
 from .vmware import get_vcenter_vms, test_vcenter_connection, get_cluster_group_name, get_cluster_type
 
@@ -936,6 +936,40 @@ def sync_vcenter_vms(logger=None) -> SyncResult:
             }
         )
 
+        # Набор вариантов для поля "Приоритет восстановления ВМ".
+        # Значения (value) хранятся как строки '1'..'4', цвета — в choice_colors.
+        restore_order_choiceset, _ = CustomFieldChoiceSet.objects.get_or_create(
+            name='Приоритет восстановления ВМ',
+            defaults={
+                'extra_choices': [
+                    ['1', 'экстренный'],
+                    ['2', 'желательно'],
+                    ['3', 'базовый'],
+                    ['4', 'не включать'],
+                ],
+                'choice_colors': {
+                    '1': 'red',
+                    '2': 'orange',
+                    '3': 'green',
+                    '4': 'gray',
+                },
+            }
+        )
+
+        # Поле "Приоритет восстановления ВМ" (тип select).
+        # Базовое значение ('3') проставляется при синхронизации через
+        # ensure_restore_order_default() для ВМ с пустым полем.
+        vm_restore_order_field, created = CustomField.objects.get_or_create(
+            name=RESTORE_ORDER_FIELD,
+            defaults={
+                'label': 'Приоритет восстановления ВМ',
+                'type': 'select',
+                'description': 'Приоритет восстановления виртуальной машины',
+                'required': False,
+                'choice_set': restore_order_choiceset,
+            }
+        )
+
         # Custom field для отображения связанных OBU Services
         # Lazy import чтобы избежать циклических зависимостей
         from .models import ObuServices
@@ -977,7 +1011,8 @@ def sync_vcenter_vms(logger=None) -> SyncResult:
                       tools_status_field, vmtools_description_field, vmtools_version_number_field,
                       os_pretty_name_field, os_family_name_field, os_distro_name_field,
                       os_distro_version_field, os_kernel_version_field, os_bitness_field,
-                      creation_date_field, obu_services_field, has_obu_services_field]:
+                      creation_date_field, vm_restore_order_field,
+                      obu_services_field, has_obu_services_field]:
             if vm_content_type not in field.object_types.all():
                 field.object_types.add(vm_content_type)
 
