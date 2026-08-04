@@ -4,10 +4,32 @@ API Views (ViewSets) для плагина netbox_obudozer
 Определяет REST API endpoints для моделей плагина.
 """
 from django.db.models import Count
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework.views import APIView
 from rest_framework.viewsets import ModelViewSet
 from netbox.api.viewsets import NetBoxModelViewSet
 from ..models import ObuServices, ServiceVMAssignment, NginxDomain, OperatingSystem
 from .serializers import ObuServicesSerializer, ServiceVMAssignmentSerializer, NginxDomainSerializer, OperatingSystemSerializer
+
+
+class RutokenAccessListView(APIView):
+    """
+    Тестовый endpoint для проверки подключения внешних bash-скриптов к API плагина.
+
+    Пока отдаёт фиксированные данные-заглушку. Требует API-токена NetBox
+    (Authorization: Token <token>), как и остальные endpoints плагина.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        data = {
+            'rutoken_access_list': [
+                {'id': 1, 'rutoken_cert': 'protolabnewext_1764176618637_rutokenVpnClient'},
+                {'id': 2, 'rutoken_cert': 'barscentrext_1707723385824_rutokenVpnClient'},
+            ]
+        }
+        return Response(data)
 
 
 class ServiceVMAssignmentViewSet(ModelViewSet):

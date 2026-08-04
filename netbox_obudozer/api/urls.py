@@ -3,8 +3,15 @@ API URL маршруты для плагина netbox_obudozer
 
 Регистрирует ViewSet'ы в роутере для автоматической генерации REST API endpoints.
 """
+from django.urls import path
 from rest_framework import routers
-from .views import ObuServicesViewSet, ServiceVMAssignmentViewSet, NginxDomainViewSet, OperatingSystemViewSet
+from .views import (
+    ObuServicesViewSet,
+    ServiceVMAssignmentViewSet,
+    NginxDomainViewSet,
+    OperatingSystemViewSet,
+    RutokenAccessListView,
+)
 
 
 # Создаем роутер для автоматической регистрации ViewSet'ов
@@ -26,5 +33,8 @@ router.register('vm-assignments', ServiceVMAssignmentViewSet)
 router.register('nginx-domains', NginxDomainViewSet)
 router.register('operating-systems', OperatingSystemViewSet)
 
-# Экспортируем URL patterns из роутера
-urlpatterns = router.urls
+# Тестовый endpoint для внешних bash-скриптов (не привязан к модели)
+# GET /api/plugins/obudozer/rutoken-access/
+urlpatterns = [
+    path('rutoken-access/', RutokenAccessListView.as_view(), name='rutoken-access-list'),
+] + router.urls
