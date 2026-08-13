@@ -10,26 +10,30 @@ from rest_framework.views import APIView
 from rest_framework.viewsets import ModelViewSet
 from netbox.api.viewsets import NetBoxModelViewSet
 from ..models import ObuServices, ServiceVMAssignment, NginxDomain, OperatingSystem
-from .serializers import ObuServicesSerializer, ServiceVMAssignmentSerializer, NginxDomainSerializer, OperatingSystemSerializer
+from ..rutoken import get_outsourcing_contacts
+from .serializers import (
+    ObuServicesSerializer,
+    ServiceVMAssignmentSerializer,
+    NginxDomainSerializer,
+    OperatingSystemSerializer,
+    RutokenAccessSerializer,
+)
 
 
 class RutokenAccessListView(APIView):
     """
-    Тестовый endpoint для проверки подключения внешних bash-скриптов к API плагина.
+    Endpoint для внешних bash-скриптов: контакты арендаторов группы outsourcing.
 
-    Пока отдаёт фиксированные данные-заглушку. Требует API-токена NetBox
+    Сбор данных — в rutoken.py, здесь только отдача. Требует API-токена NetBox
     (Authorization: Token <token>), как и остальные endpoints плагина.
     """
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        data = {
-            'rutoken_access_list': [
-                {'id': 1, 'rutoken_cert': 'protolabnewext_1764176618637_rutokenVpnClient'},
-                {'id': 2, 'rutoken_cert': 'barscentrext_1707723385824_rutokenVpnClient'},
-            ]
-        }
-        return Response(data)
+        contacts = get_outsourcing_contacts()
+        return Response({
+            'rutoken_access_list': RutokenAccessSerializer(contacts, many=True).data
+        })
 
 
 class ServiceVMAssignmentViewSet(ModelViewSet):

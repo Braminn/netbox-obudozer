@@ -9,6 +9,20 @@ from virtualization.models import VirtualMachine
 from ..models import ObuServices, ServiceVMAssignment, NginxDomain, OperatingSystem
 
 
+class RutokenAccessSerializer(serializers.Serializer):
+    """
+    Контракт выдачи /rutoken-access/.
+
+    Модели за ним нет — данные собираются в rutoken.py из контактов,
+    привязанных к арендаторам группы outsourcing.
+    """
+
+    id = serializers.IntegerField(read_only=True)
+    name = serializers.CharField(read_only=True)
+    org = serializers.CharField(read_only=True)
+    rutoken_cert = serializers.CharField(read_only=True, allow_blank=True)
+
+
 class ServiceVMAssignmentSerializer(serializers.ModelSerializer):
     """
     Сериализатор для промежуточной модели ServiceVMAssignment.
