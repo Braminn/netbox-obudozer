@@ -26,6 +26,10 @@ logger = logging.getLogger('netbox.plugins.netbox_obudozer.rutoken')
 # Пока захардкожено; при необходимости выносится в PLUGINS_CONFIG.
 OUTSOURCING_GROUP_SLUG = 'outsourcing'
 
+# Custom field на tenancy.Contact с идентификатором Rutoken-сертификата.
+# Создаётся в фазе подготовки синхронизации (custom_fields.py), заполняется вручную.
+RUTOKEN_CERT_FIELD = 'rutoken_cert'
+
 
 def _get_group_ids(slug=OUTSOURCING_GROUP_SLUG):
     """
@@ -70,6 +74,9 @@ def get_outsourcing_contacts():
     (контакт, арендатор) — например, когда контакт привязан к арендатору
     с разными ролями — схлопываются.
 
+    rutoken_cert берётся из одноимённого custom field контакта
+    (создаётся в custom_fields.ensure_contact_custom_fields).
+
     :return: список dict с ключами id / name / org / rutoken_cert
     """
     group_ids = _get_group_ids()
@@ -105,8 +112,8 @@ def get_outsourcing_contacts():
             'id': assignment.contact_id,
             'name': assignment.contact.name,
             'org': tenant_names[assignment.object_id],
-            # Заполняется на следующем этапе
-            'rutoken_cert': '',
+            # Поле может быть не заполнено или ещё не создано у контакта — тогда пустая строка
+            'rutoken_cert': assignment.contact.custom_field_data.get(RUTOKEN_CERT_FIELD) or '',
         })
 
     return result
