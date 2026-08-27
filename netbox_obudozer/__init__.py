@@ -22,15 +22,21 @@ class ObudozerPluginConfig(PluginConfig):
     api_urls = 'api.urls'  # Регистрация REST API URLs
     required_settings = []
     default_settings = {
-        # Настройки подключения к vCenter (будут использоваться при реальной интеграции)
-        'vcenter_host': '',
-        'vcenter_name': '',  # Имя для ClusterGroup в NetBox
-        'vcenter_user': '',
-        'vcenter_password': '',
-        'vcenter_verify_ssl': False,
+        # Список vCenter-серверов. Для каждого элемента создаётся отдельная
+        # ClusterGroup с именем name, к ней привязываются все кластеры и ВМ
+        # этого vCenter. Формат элемента:
+        #   {
+        #       'host': 'vcenter.example.com',
+        #       'name': 'Production vCenter',   # имя ClusterGroup в NetBox
+        #       'user': 'username',
+        #       'password': 'password',
+        #       'verify_ssl': False,
+        #       'cluster_type': 'vmware',       # необязательно, иначе общий cluster_type
+        #   }
+        'vcenters': [],
 
         # Настройки кластеров
-        'cluster_type': '',  # Тип кластера в NetBox
+        'cluster_type': '',  # Тип кластера в NetBox по умолчанию для всех vCenter
 
         # Настройки синхронизации
         'sync_enabled': True,

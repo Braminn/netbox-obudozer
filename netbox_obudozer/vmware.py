@@ -27,42 +27,56 @@ def get_plugin_config():
     return settings.PLUGINS_CONFIG.get('netbox_obudozer', {})
 
 
-def get_cluster_group_name():
+def get_vcenters() -> List[Dict]:
     """
-    Получает имя ClusterGroup из конфигурации.
+    Возвращает нормализованный список конфигураций vCenter из PLUGINS_CONFIG.
+
+    Каждый элемент списка 'vcenters' описывает отдельный vCenter, для которого
+    в NetBox создаётся своя ClusterGroup с именем `name`.
+
+    Элементы с неполной конфигурацией НЕ отбрасываются: они возвращаются с
+    заполненным ключом `config_error`, чтобы страница синхронизации и job
+    могли показать проблему, а не молча пропустить vCenter.
 
     Returns:
-        str: vcenter_name из PLUGINS_CONFIG
-
-    Raises:
-        ValueError: Если vcenter_name не настроен
-    """
-    config = get_plugin_config()
-    name = config.get('vcenter_name')
-    if not name:
-        raise ValueError("vcenter_name not configured in PLUGINS_CONFIG")
-    return name
-
-
-def get_cluster_type():
-    """
-    Получает тип кластера из конфигурации.
-
-    Returns:
-        str: cluster_type из PLUGINS_CONFIG (по умолчанию 'vmware')
+        List[Dict]: Список словарей с ключами host, name, user, password,
+                    verify_ssl, cluster_type, config_error
 
     Example:
-        >>> cluster_type = get_cluster_type()
-        >>> print(cluster_type)
-        vmware
+        >>> for vc in get_vcenters():
+        ...     print(vc['name'], vc['host'])
+        Production vCenter vc1.example.com
+        DR vCenter vc2.example.com
     """
     config = get_plugin_config()
-    return config.get('cluster_type', 'change_cluster_type')
+    default_cluster_type = config.get('cluster_type') or 'change_cluster_type'
+
+    vcenters = []
+    for idx, vc in enumerate(config.get('vcenters') or []):
+        missing = [key for key in ('host', 'name', 'user', 'password') if not vc.get(key)]
+
+        vcenters.append({
+            'host': vc.get('host'),
+            # Имя обязательно, но для читаемой диагностики нужен хоть какой-то ярлык
+            'name': vc.get('name') or vc.get('host') or f'vcenters[{idx}]',
+            'user': vc.get('user'),
+            'password': vc.get('password'),
+            'verify_ssl': vc.get('verify_ssl', False),
+            'cluster_type': vc.get('cluster_type') or default_cluster_type,
+            'config_error': (
+                f"не заданы обязательные параметры: {', '.join(missing)}" if missing else None
+            ),
+        })
+
+    return vcenters
 
 
-def _connect_vcenter():
+def _connect_vcenter(vc: Dict):
     """
     Устанавливает подключение к vCenter.
+
+    Args:
+        vc: Конфигурация vCenter из get_vcenters()
 
     Returns:
         ServiceInstance: Объект подключения к vCenter
@@ -71,15 +85,13 @@ def _connect_vcenter():
         ValueError: Если не настроены учетные данные vCenter
         Exception: Если не удалось подключиться к vCenter
     """
-    config = get_plugin_config()
+    if vc.get('config_error'):
+        raise ValueError(f"vCenter «{vc['name']}»: {vc['config_error']}")
 
-    host = config.get('vcenter_host')
-    user = config.get('vcenter_user')
-    password = config.get('vcenter_password')
-    verify_ssl = config.get('vcenter_verify_ssl', False)
-
-    if not all([host, user, password]):
-        raise ValueError("vCenter credentials not configured in PLUGINS_CONFIG")
+    host = vc['host']
+    user = vc['user']
+    password = vc['password']
+    verify_ssl = vc.get('verify_ssl', False)
 
     try:
         si = SmartConnect(
@@ -289,12 +301,15 @@ def _extract_disk_info(devices):
     return disks
 
 
-def get_vcenter_vms() -> List[Dict]:
+def get_vcenter_vms(vc: Dict) -> List[Dict]:
     """
     Получает список виртуальных машин из VMware vCenter.
 
     Использует PropertyCollector API для эффективного получения всех данных
     одним запросом вместо множества отдельных запросов для каждой ВМ.
+
+    Args:
+        vc: Конфигурация vCenter из get_vcenters()
 
     Returns:
         List[Dict]: Список словарей с данными о VM, каждый содержит:
@@ -307,7 +322,7 @@ def get_vcenter_vms() -> List[Dict]:
         Exception: При ошибке подключения или получения данных
 
     Example:
-        >>> vms = get_vcenter_vms()
+        >>> vms = get_vcenter_vms(get_vcenters()[0])
         >>> for vm in vms:
         ...     print(f"{vm['name']}: {vm['state']}")
         vm01: running
@@ -319,8 +334,8 @@ def get_vcenter_vms() -> List[Dict]:
 
     try:
         # Подключаемся к vCenter
-        logger.info("Connecting to vCenter...")
-        si = _connect_vcenter()
+        logger.info(f"Connecting to vCenter {vc['name']}...")
+        si = _connect_vcenter(vc)
         content = si.RetrieveContent()
 
         # Создаем container view для всех VirtualMachine объектов
@@ -435,10 +450,10 @@ def get_vcenter_vms() -> List[Dict]:
         # Уничтожаем view
         container_view.Destroy()
 
-        logger.info(f"Successfully retrieved {len(vms)} VMs from vCenter using PropertyCollector")
+        logger.info(f"Successfully retrieved {len(vms)} VMs from vCenter {vc['name']} using PropertyCollector")
 
     except Exception as e:
-        logger.error(f"Error retrieving VMs from vCenter: {e}")
+        logger.error(f"Error retrieving VMs from vCenter {vc['name']}: {e}")
         raise
 
     finally:
@@ -452,17 +467,20 @@ def get_vcenter_vms() -> List[Dict]:
     return vms
 
 
-def test_vcenter_connection() -> bool:
+def test_vcenter_connection(vc: Dict) -> bool:
     """
     Проверяет подключение к vCenter.
 
     Выполняет тестовое подключение к vCenter и проверяет доступность API.
 
+    Args:
+        vc: Конфигурация vCenter из get_vcenters()
+
     Returns:
         bool: True если подключение успешно, False в противном случае
 
     Example:
-        >>> if test_vcenter_connection():
+        >>> if test_vcenter_connection(get_vcenters()[0]):
         ...     print("vCenter доступен")
         ... else:
         ...     print("Ошибка подключения к vCenter")
@@ -470,7 +488,7 @@ def test_vcenter_connection() -> bool:
     si = None
     try:
         # Подключаемся к vCenter
-        si = _connect_vcenter()
+        si = _connect_vcenter(vc)
 
         # Проверяем, что можем получить content
         content = si.RetrieveContent()
@@ -478,11 +496,11 @@ def test_vcenter_connection() -> bool:
         # Проверяем доступность основных API
         _ = content.about.fullName
 
-        logger.info("vCenter connection test successful")
+        logger.info(f"vCenter {vc['name']} connection test successful")
         return True
 
     except Exception as e:
-        logger.error(f"vCenter connection test failed: {e}")
+        logger.error(f"vCenter {vc['name']} connection test failed: {e}")
         return False
 
     finally:

@@ -12,10 +12,11 @@ from typing import Dict, List, Tuple
 from datetime import datetime
 from django.db import transaction
 from django.utils import timezone
+from django.utils.text import slugify
 from virtualization.models import ClusterType, Cluster, ClusterGroup, VirtualMachine, VirtualDisk
 
 from .custom_fields import ensure_custom_fields, RESTORE_ORDER_FIELD, RESTORE_ORDER_DEFAULT
-from .vmware import get_vcenter_vms, test_vcenter_connection, get_cluster_group_name, get_cluster_type
+from .vmware import get_vcenter_vms, test_vcenter_connection, get_vcenters
 
 
 def ensure_restore_order_default(vm) -> bool:
@@ -46,6 +47,7 @@ class SyncResult:
     Хранит статистику о выполненных операциях.
     
     Attributes:
+        vcenter_name (str): Имя vCenter, к которому относится результат
         created (int): Количество созданных VM
         updated (int): Количество обновленных VM
         unchanged (int): Количество неизмененных VM
@@ -54,8 +56,9 @@ class SyncResult:
         total_processed (int): Общее количество обработанных VM
         duration (float): Длительность синхронизации в секундах
     """
-    
-    def __init__(self):
+
+    def __init__(self, vcenter_name: str = None):
+        self.vcenter_name = vcenter_name
         self.created = 0
         self.updated = 0
         self.unchanged = 0
@@ -81,8 +84,9 @@ class SyncResult:
         # Гарантируем что duration - это число и форматируем заранее
         duration_seconds = float(self.duration) if self.duration else 0.0
         duration_formatted = f"{duration_seconds:.2f}"
+        scope = f" «{self.vcenter_name}»" if self.vcenter_name else ""
         return (
-            f"Синхронизация завершена за {duration_formatted} сек:\n"
+            f"Синхронизация{scope} завершена за {duration_formatted} сек:\n"
             f"  Создано: {self.created}\n"
             f"  Обновлено: {self.updated}\n"
             f"  Без изменений: {self.unchanged}\n"
@@ -195,8 +199,10 @@ def get_field_changes(vm: VirtualMachine, vcenter_data: Dict, cluster_group_name
     # Определяем ожидаемое имя кластера
     expected_cluster_name = new_vcenter_cluster or cluster_group_name
 
-    # Проверяем несоответствие кластера (для миграции из vcenter_obu)
-    if vm.cluster.name != expected_cluster_name:
+    # Проверяем несоответствие кластера (миграция из vcenter_obu, переезд между vCenter).
+    # cluster у ВМ может быть не задан (ВМ привязана к устройству) — тогда тоже переназначаем.
+    current_cluster_name = vm.cluster.name if vm.cluster else None
+    if current_cluster_name != expected_cluster_name:
         changes['vcenter_cluster'] = {
             'old': current_vcenter_cluster,
             'new': new_vcenter_cluster
@@ -302,15 +308,25 @@ def calculate_diff(
     vcenter_vms: List[Dict],
     existing_vms: Dict[str, VirtualMachine],
     cluster_group_name: str,
+    cluster_group_id: int,
     logger=None
 ) -> VMDiff:
     """
     ФАЗА 2: Вычисляет различия между vCenter и NetBox.
 
+    Поиск существующих ВМ идёт по имени среди ВСЕХ ВМ NetBox (имена ВМ в
+    организации уникальны) — это позволяет ВМ, переехавшей между vCenter,
+    просто переприлепиться к новому кластеру и группе вместо создания дубля.
+
+    А вот пометка «отсутствует в vCenter» ограничена ClusterGroup текущего
+    vCenter: иначе при нескольких vCenter каждая синхронизация помечала бы
+    failed все ВМ остальных vCenter.
+
     Args:
         vcenter_vms: Список VM из vCenter
         existing_vms: Словарь существующих VM в NetBox (name -> VMRecord)
         cluster_group_name: Имя ClusterGroup (для default кластера)
+        cluster_group_id: PK ClusterGroup текущего vCenter (область пометки failed)
         logger: Опциональный logger для фоновых задач (JobRunner.logger)
 
     Returns:
@@ -345,9 +361,12 @@ def calculate_diff(
             # VM не существует - нужно создать
             diff.to_create.append(vm_data)
 
-    # Находим VM которых нет в vCenter
+    # Находим VM которых нет в vCenter — только среди ВМ этого vCenter.
+    # ВМ из других ClusterGroup (другие vCenter, ручные записи) не трогаем.
     for vm_name, vm_record in existing_vms.items():
-        if vm_name not in vcenter_names and vm_record.status != 'failed':
+        if vm_name in vcenter_names or vm_record.status == 'failed':
+            continue
+        if vm_record.cluster and vm_record.cluster.group_id == cluster_group_id:
             diff.to_mark_missing.append(vm_record)
 
     return diff
@@ -704,27 +723,39 @@ def apply_changes(
     return result
 
 
-def sync_vcenter_vms(logger=None) -> SyncResult:
+def sync_vcenter_vms(vc: Dict, logger=None) -> SyncResult:
     """
-    Основная функция синхронизации VM из vCenter с NetBox.
+    Синхронизация VM из ОДНОГО vCenter с NetBox.
 
     Реализует 3-фазный подход:
     1. Preparation - получение данных
     2. Diff - вычисление различий
     3. Apply - применение изменений
 
+    Для каждого vCenter создаётся собственная ClusterGroup с именем vc['name'],
+    в неё попадают все кластеры и ВМ этого vCenter.
+
     Args:
+        vc: Конфигурация vCenter из get_vcenters()
         logger: Опциональный logger для фоновых задач (JobRunner.logger)
 
     Returns:
         SyncResult с результатами синхронизации
 
     Example:
-        >>> result = sync_vcenter_vms()
+        >>> result = sync_vcenter_vms(get_vcenters()[0])
         >>> print(f"Создано: {result.created}, Обновлено: {result.updated}")
     """
-    result = SyncResult()
+    result = SyncResult(vcenter_name=vc['name'])
     result.start()
+
+    # Некорректная конфигурация — дальше идти незачем
+    if vc.get('config_error'):
+        result.errors.append(f"Конфигурация vCenter «{vc['name']}»: {vc['config_error']}")
+        if logger:
+            logger.error(f"  ❌ Конфигурация vCenter «{vc['name']}»: {vc['config_error']}")
+        result.finish()
+        return result
 
     # ФАЗА 1: PREPARATION - Получение данных
     if logger:
@@ -734,8 +765,8 @@ def sync_vcenter_vms(logger=None) -> SyncResult:
         if logger:
             logger.info("  → Проверка подключения к vCenter...")
         # Проверяем подключение к vCenter
-        if not test_vcenter_connection():
-            result.errors.append("Не удалось подключиться к vCenter")
+        if not test_vcenter_connection(vc):
+            result.errors.append(f"Не удалось подключиться к vCenter «{vc['name']}»")
             if logger:
                 logger.error("  ❌ vCenter недоступен")
             result.finish()
@@ -748,7 +779,7 @@ def sync_vcenter_vms(logger=None) -> SyncResult:
         if logger:
             logger.info("  → Проверка ClusterType...")
 
-        cluster_type_value = get_cluster_type()
+        cluster_type_value = vc['cluster_type']
         cluster_type_slug = cluster_type_value.lower()
         cluster_type_name = cluster_type_value
 
@@ -760,21 +791,22 @@ def sync_vcenter_vms(logger=None) -> SyncResult:
         if logger:
             logger.info(f"  ✓ ClusterType: {cluster_type.name}")
 
-        # Получаем/создаем ClusterGroup из vcenter_name
+        # Получаем/создаем ClusterGroup этого vCenter
         if logger:
             logger.info("  → Проверка ClusterGroup...")
 
-        cluster_group_name = get_cluster_group_name()
+        cluster_group_name = vc['name']
+        vcenter_host = vc['host']
 
-        # Получаем vcenter_host для описания
-        from .vmware import get_plugin_config
-        config = get_plugin_config()
-        vcenter_host = config.get('vcenter_host', cluster_group_name)
+        # slugify вместо ручной замены символов: имя vCenter может содержать
+        # пробелы («Production vCenter»), они дали бы невалидный slug.
+        # Кириллическое имя slugify превращает в пустую строку — подстраховываемся хостом.
+        group_slug = slugify(cluster_group_name) or slugify(vcenter_host) or 'vcenter'
 
         cluster_group, created = ClusterGroup.objects.get_or_create(
             name=cluster_group_name,
             defaults={
-                'slug': cluster_group_name.replace('.', '-').replace('_', '-'),
+                'slug': group_slug,
                 'description': f'vCenter clusters from {vcenter_host}'
             }
         )
@@ -792,7 +824,7 @@ def sync_vcenter_vms(logger=None) -> SyncResult:
         if logger:
             logger.info("  → Получение VM из vCenter...")
 
-        vcenter_vms = get_vcenter_vms()
+        vcenter_vms = get_vcenter_vms(vc)
 
         if logger:
             logger.info(f"  ✓ Получено {len(vcenter_vms)} VM из vCenter")
@@ -820,14 +852,16 @@ def sync_vcenter_vms(logger=None) -> SyncResult:
             if logger:
                 logger.warning(f"  ⚠ Не удалось обновить реестр версий ОС: {e}")
 
-        # Получаем ВСЕ существующие VM (из любых кластеров)
-        # Включая старый vcenter_obu - они автоматически переместятся при обновлении
+        # Получаем ВСЕ существующие VM (из любых кластеров).
+        # Имена ВМ в организации уникальны, поэтому глобальный поиск по имени
+        # корректен и заодно позволяет ВМ переехать между vCenter без дубля.
+        # select_related('cluster') — иначе N+1 запросов на vm.cluster в диффе.
         if logger:
             logger.info("  → Запрос существующих VM из NetBox...")
 
         existing_vms = {
             vm.name: vm
-            for vm in VirtualMachine.objects.all()
+            for vm in VirtualMachine.objects.select_related('cluster')
         }
 
         if logger:
@@ -846,7 +880,13 @@ def sync_vcenter_vms(logger=None) -> SyncResult:
         logger.info("🔍 ФАЗА 2: Анализ различий")
 
     try:
-        diff = calculate_diff(vcenter_vms, existing_vms, cluster_group_name, logger=logger)
+        diff = calculate_diff(
+            vcenter_vms,
+            existing_vms,
+            cluster_group_name,
+            cluster_group.pk,
+            logger=logger
+        )
 
         if logger:
             logger.info(f"  → Создать: {len(diff.to_create)} VM")
@@ -880,74 +920,149 @@ def sync_vcenter_vms(logger=None) -> SyncResult:
         result.errors.append(f"Ошибка применения изменений: {str(e)}")
         if logger:
             logger.error(f"  ❌ {str(e)}")
-    
+
     result.finish()
     return result
 
 
-def get_sync_status(cluster_group_name: str = None) -> Dict:
+def sync_all_vcenters(logger=None) -> List[SyncResult]:
     """
-    Возвращает текущий статус синхронизации для ClusterGroup.
+    Синхронизирует ВСЕ vCenter из PLUGINS_CONFIG['vcenters'] по очереди.
+
+    Каждый vCenter обрабатывается независимо: своя ClusterGroup, своя
+    транзакция (apply_changes атомарен), свой SyncResult. Падение одного
+    vCenter не откатывает и не прерывает синхронизацию остальных.
 
     Args:
-        cluster_group_name: Имя ClusterGroup (по умолчанию из vcenter_host)
+        logger: Опциональный logger для фоновых задач (JobRunner.logger)
+
+    Returns:
+        List[SyncResult]: По одному результату на каждый vCenter
+
+    Example:
+        >>> results = sync_all_vcenters()
+        >>> for r in results:
+        ...     print(r.vcenter_name, r.created, r.updated)
+    """
+    results = []
+
+    vcenters = get_vcenters()
+    if not vcenters:
+        if logger:
+            logger.error("❌ Список vCenter пуст: задайте 'vcenters' в PLUGINS_CONFIG")
+        return results
+
+    for idx, vc in enumerate(vcenters, 1):
+        if logger:
+            logger.info("")
+            logger.info("═" * 60)
+            logger.info(f"🖧  vCenter {idx}/{len(vcenters)}: «{vc['name']}» ({vc['host'] or '—'})")
+            logger.info("═" * 60)
+
+        try:
+            results.append(sync_vcenter_vms(vc, logger=logger))
+        except Exception as e:
+            # sync_vcenter_vms ловит ошибки сам, но подстраховываемся:
+            # один упавший vCenter не должен уронить остальные
+            failed = SyncResult(vcenter_name=vc['name'])
+            failed.start()
+            failed.errors.append(f"Непредвиденная ошибка: {str(e)}")
+            failed.finish()
+            results.append(failed)
+            if logger:
+                logger.error(f"  ❌ vCenter «{vc['name']}»: {str(e)}")
+
+    return results
+
+
+def get_sync_status(vc: Dict) -> Dict:
+    """
+    Возвращает текущий статус синхронизации для одного vCenter.
+
+    Args:
+        vc: Конфигурация vCenter из get_vcenters()
 
     Returns:
         Dict со статистикой:
-            - total_vms: Общее количество VM в ClusterGroup
+            - vcenter_name / vcenter_host: Идентификация vCenter
+            - config_error: Текст проблемы конфигурации или None
+            - total_vms: Общее количество VM в ClusterGroup этого vCenter
             - active_vms: Количество активных VM (running)
             - offline_vms: Количество остановленных VM (stopped)
             - failed_vms: Количество отсутствующих в vCenter VM
-            - vcenter_available: Доступность vCenter
-            - last_sync: Время последней синхронизации
             - cluster_count: Количество кластеров в группе
+            - vcenter_available: Доступность vCenter
 
     Example:
-        >>> status = get_sync_status()
+        >>> status = get_sync_status(get_vcenters()[0])
         >>> print(f"Всего VM: {status['total_vms']}, Кластеров: {status['cluster_count']}")
     """
+    status = {
+        'vcenter_name': vc['name'],
+        'vcenter_host': vc['host'],
+        'config_error': vc.get('config_error'),
+        'total_vms': 0,
+        'active_vms': 0,
+        'offline_vms': 0,
+        'failed_vms': 0,
+        'cluster_count': 0,
+        # Неполный конфиг — подключаться незачем, сразу «недоступен»
+        'vcenter_available': False if vc.get('config_error') else test_vcenter_connection(vc),
+    }
+
     try:
-        if cluster_group_name is None:
-            cluster_group_name = get_cluster_group_name()
-
-        cluster_group = ClusterGroup.objects.get(name=cluster_group_name)
-        vms = VirtualMachine.objects.filter(cluster__group=cluster_group)
-
-        total_vms = vms.count()
-        active_vms = vms.filter(status='active').count()
-        offline_vms = vms.filter(status='offline').count()
-        failed_vms = vms.filter(status='failed').count()
-        cluster_count = Cluster.objects.filter(group=cluster_group).count()
-
-        # Получаем время последней успешной синхронизации из таблицы Job
-        from core.models import Job
-        last_job = (
-            Job.objects
-            .filter(name='vCenter VM Synchronization', status='completed')
-            .order_by('-completed')
-            .first()
-        )
-        last_sync = last_job.completed if last_job else None
-
-        return {
-            'total_vms': total_vms,
-            'active_vms': active_vms,
-            'offline_vms': offline_vms,
-            'failed_vms': failed_vms,
-            'vcenter_available': test_vcenter_connection(),
-            'last_sync': last_sync,
-            'cluster_count': cluster_count,
-        }
+        cluster_group = ClusterGroup.objects.get(name=vc['name'])
     except ClusterGroup.DoesNotExist:
-        return {
-            'total_vms': 0,
-            'active_vms': 0,
-            'offline_vms': 0,
-            'failed_vms': 0,
-            'vcenter_available': test_vcenter_connection(),
-            'last_sync': None,
-            'cluster_count': 0,
-        }
+        # Синхронизация ещё ни разу не выполнялась для этого vCenter
+        return status
+
+    vms = VirtualMachine.objects.filter(cluster__group=cluster_group)
+    status['total_vms'] = vms.count()
+    status['active_vms'] = vms.filter(status='active').count()
+    status['offline_vms'] = vms.filter(status='offline').count()
+    status['failed_vms'] = vms.filter(status='failed').count()
+    status['cluster_count'] = Cluster.objects.filter(group=cluster_group).count()
+
+    return status
+
+
+def get_sync_overview() -> Dict:
+    """
+    Сводный статус синхронизации по всем настроенным vCenter.
+
+    Returns:
+        Dict:
+            - vcenters: List[Dict] — результат get_sync_status() на каждый vCenter
+            - totals: Dict — суммарные счётчики по всем vCenter
+            - last_sync: datetime|None — время последней успешной задачи синхронизации
+            - any_available: bool — доступен ли хотя бы один vCenter
+            - configured: bool — задан ли непустой список vcenters
+
+    Example:
+        >>> overview = get_sync_overview()
+        >>> print(overview['totals']['total_vms'], len(overview['vcenters']))
+    """
+    statuses = [get_sync_status(vc) for vc in get_vcenters()]
+
+    counters = ('total_vms', 'active_vms', 'offline_vms', 'failed_vms', 'cluster_count')
+    totals = {key: sum(s[key] for s in statuses) for key in counters}
+
+    # Задача одна на все vCenter, поэтому время последней синхронизации общее
+    from core.models import Job
+    last_job = (
+        Job.objects
+        .filter(name='vCenter VM Synchronization', status='completed')
+        .order_by('-completed')
+        .first()
+    )
+
+    return {
+        'vcenters': statuses,
+        'totals': totals,
+        'last_sync': last_job.completed if last_job else None,
+        'any_available': any(s['vcenter_available'] for s in statuses),
+        'configured': bool(statuses),
+    }
 
 
 def sync_cluster_to_service(service_id: int, cluster_id: int, logger=None) -> Dict:

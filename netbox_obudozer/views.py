@@ -19,7 +19,7 @@ from netbox.views.generic import (
 )
 from utilities.views import register_model_view
 
-from .sync import get_sync_status
+from .sync import get_sync_overview
 from .jobs import VCenterSyncJob
 from .models import ObuServices, NginxDomain, OperatingSystem
 from .tables import ObuServicesTable, NginxDomainTable, OperatingSystemTable
@@ -30,9 +30,9 @@ from .filtersets import ObuServicesFilterSet, NginxDomainFilterSet, OperatingSys
 @permission_required('netbox_obudozer.view_vcentersyncaccess')
 def sync_vcenter_view(request):
     """
-    View для запуска синхронизации с vCenter.
+    View для запуска синхронизации со всеми настроенными vCenter.
 
-    GET: Отображает статус синхронизации
+    GET: Отображает статус синхронизации по каждому vCenter
     POST: Ставит задачу синхронизации в очередь и возвращает JSON с job_id
 
     Args:
@@ -60,11 +60,9 @@ def sync_vcenter_view(request):
                 'error': str(e)
             }, status=500)
 
-    # GET запрос - показываем статус синхронизации
-    sync_status = get_sync_status()
-
+    # GET запрос - показываем статус синхронизации по каждому vCenter
     return render(request, 'netbox_obudozer/sync_status.html', {
-        'sync_status': sync_status,
+        'overview': get_sync_overview(),
     })
 
 
