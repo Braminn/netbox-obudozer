@@ -230,6 +230,22 @@ class EolAccess(models.Model):
         ]
 
 
+class DashboardAccess(models.Model):
+    """
+    Модель без таблицы — только для управления правом доступа к сводному дашборду.
+    Таблица в БД не создаётся (managed=False).
+    """
+
+    class Meta:
+        managed = False
+        default_permissions = ()
+        verbose_name = 'Доступ к сводному дашборду'
+        verbose_name_plural = 'Доступ к сводному дашборду'
+        permissions = [
+            ('view_dashboardaccess', 'Доступ к странице сводного дашборда'),
+        ]
+
+
 class VCenterSyncAccess(models.Model):
     """
     Модель без таблицы — только для управления правами доступа к синхронизации vCenter.

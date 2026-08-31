@@ -8,6 +8,9 @@ from utilities.urls import get_model_urls
 from . import views
 
 urlpatterns = [
+    # Сводный дашборд
+    path('dashboard/', views.dashboard_view, name='dashboard'),
+
     # Синхронизация с vCenter
     path('sync-vcenter/', views.sync_vcenter_view, name='sync_vcenter'),
 

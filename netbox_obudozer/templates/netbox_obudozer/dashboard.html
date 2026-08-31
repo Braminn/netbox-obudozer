@@ -1,0 +1,293 @@
+{% extends 'base/layout.html' %}
+
+{% block title %}Дашборд Obudozer{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <h1>
+                <i class="mdi mdi-view-dashboard"></i>
+                Дашборд
+            </h1>
+            <hr>
+        </div>
+    </div>
+
+    {# ── Сводные показатели ─────────────────────────────────────────────── #}
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-body">
+                    <div class="row text-center">
+                        <div class="col-md-2 col-6">
+                            <div class="small text-muted">Всего ВМ</div>
+                            <div class="h3">
+                                <a href="{% url 'virtualization:virtualmachine_list' %}">{{ vm_total }}</a>
+                            </div>
+                        </div>
+                        <div class="col-md-2 col-6">
+                            <div class="small text-muted">Активных</div>
+                            <div class="h3 text-success">
+                                <a href="{% url 'virtualization:virtualmachine_list' %}?status=active">{{ vm_active }}</a>
+                            </div>
+                        </div>
+                        <div class="col-md-2 col-6">
+                            <div class="small text-muted">Услуг</div>
+                            <div class="h3">
+                                <a href="{% url 'plugins:netbox_obudozer:obuservices_list' %}">{{ service_total }}</a>
+                            </div>
+                        </div>
+                        <div class="col-md-2 col-6">
+                            <div class="small text-muted">Доменов</div>
+                            <div class="h3">
+                                <a href="{% url 'plugins:netbox_obudozer:nginxdomain_list' %}">{{ domain_total }}</a>
+                            </div>
+                        </div>
+                        <div class="col-md-2 col-6">
+                            <div class="small text-muted">ВМ без услуги</div>
+                            <div class="h3 {% if vm_without_service %}text-warning{% endif %}">
+                                <a href="{% url 'virtualization:virtualmachine_list' %}?cf_has_obu_services=false">{{ vm_without_service }}</a>
+                            </div>
+                        </div>
+                        <div class="col-md-2 col-6">
+                            <div class="small text-muted">Версий ОС</div>
+                            <div class="h3">
+                                <a href="{% url 'plugins:netbox_obudozer:operatingsystem_list' %}">{{ os_versions_total }}</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# ── Возможные проблемы ─────────────────────────────────────────────── #}
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <strong><i class="mdi mdi-alert-decagram"></i> Возможные проблемы</strong>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-3 col-6">
+                            <div class="small text-muted">ОС без поддержки</div>
+                            <div class="h4 {% if eol_expired_count %}text-danger{% else %}text-muted{% endif %}">
+                                <a href="{% url 'plugins:netbox_obudozer:eol_dashboard' %}">{{ eol_expired_count }}</a>
+                            </div>
+                            <div class="small text-muted">виртуальных машин</div>
+                        </div>
+                        <div class="col-md-3 col-6">
+                            <div class="small text-muted">ОС скоро без поддержки</div>
+                            <div class="h4 {% if eol_soon_count %}text-warning{% else %}text-muted{% endif %}">
+                                <a href="{% url 'plugins:netbox_obudozer:eol_dashboard' %}">{{ eol_soon_count }}</a>
+                            </div>
+                            <div class="small text-muted">виртуальных машин</div>
+                        </div>
+                        <div class="col-md-3 col-6">
+                            <div class="small text-muted">Проблемные домены</div>
+                            <div class="h4 {% if problem_domains %}text-danger{% else %}text-muted{% endif %}">
+                                <a href="{% url 'plugins:netbox_obudozer:nginxdomain_list' %}">{{ problem_domains }}</a>
+                            </div>
+                            <div class="small text-muted">не разрешаются или зациклены</div>
+                        </div>
+                        <div class="col-md-3 col-6">
+                            <div class="small text-muted">ВМ без услуги</div>
+                            <div class="h4 {% if vm_without_service %}text-warning{% else %}text-muted{% endif %}">
+                                <a href="{% url 'virtualization:virtualmachine_list' %}?cf_has_obu_services=false">{{ vm_without_service }}</a>
+                            </div>
+                            <div class="small text-muted">не привязаны ни к одной услуге</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row mb-4">
+        {# ── ВМ по vCenter ──────────────────────────────────────────────── #}
+        <div class="col-md-7">
+            <div class="card h-100">
+                <div class="card-header">
+                    <strong><i class="mdi mdi-server"></i> Виртуальные машины по vCenter</strong>
+                </div>
+                <div class="card-body p-0">
+                    {% if vcenter_rows %}
+                    <table class="table table-hover mb-0">
+                        <thead>
+                            <tr>
+                                <th>vCenter</th>
+                                <th class="text-end">Всего</th>
+                                <th class="text-end">Активных</th>
+                                <th class="text-end">Недоступных</th>
+                                <th class="text-end">vCPU</th>
+                                <th class="text-end">Память</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for row in vcenter_rows %}
+                            <tr>
+                                <td>
+                                    {% if row.group_id %}
+                                        <a href="{% url 'virtualization:virtualmachine_list' %}?cluster_group_id={{ row.group_id }}">{{ row.name }}</a>
+                                    {% else %}
+                                        <span class="text-muted">{{ row.name }}</span>
+                                    {% endif %}
+                                </td>
+                                <td class="text-end">{{ row.vm_count }}</td>
+                                <td class="text-end text-success">{{ row.active_count }}</td>
+                                <td class="text-end {% if row.failed_count %}text-danger{% else %}text-muted{% endif %}">{{ row.failed_count }}</td>
+                                <td class="text-end">{{ row.vcpus }}</td>
+                                <td class="text-end">{{ row.memory }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                    {% else %}
+                    <div class="text-muted text-center py-4">Нет данных о виртуальных машинах.</div>
+                    {% endif %}
+                </div>
+                <div class="card-footer small text-muted">
+                    vCPU и память — только по активным ВМ.
+                </div>
+            </div>
+        </div>
+
+        {# ── Услуги ─────────────────────────────────────────────────────── #}
+        <div class="col-md-5">
+            <div class="card h-100">
+                <div class="card-header">
+                    <strong><i class="mdi mdi-briefcase"></i> Услуги</strong>
+                </div>
+                <table class="table table-hover attr-table mb-0">
+                    <tr>
+                        <th scope="row">Всего услуг</th>
+                        <td><a href="{% url 'plugins:netbox_obudozer:obuservices_list' %}">{{ service_total }}</a></td>
+                    </tr>
+                    <tr>
+                        <th scope="row">ВМ в услугах</th>
+                        <td>{{ service_vm_count }}</td>
+                    </tr>
+                    <tr>
+                        <th scope="row">vCPU</th>
+                        <td>{{ service_resources.total_vcpus }}</td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Память</th>
+                        <td>{{ service_resources.total_memory }}</td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Диски</th>
+                        <td>{{ service_resources.total_disk }}</td>
+                    </tr>
+                </table>
+                <div class="card-footer small text-muted">
+                    Суммарные ресурсы по всем услугам, только активные ВМ.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row mb-4">
+        {# ── ВМ по ОС ───────────────────────────────────────────────────── #}
+        <div class="col-md-7">
+            <div class="card h-100">
+                <div class="card-header">
+                    <strong><i class="mdi mdi-penguin"></i> Виртуальные машины по операционным системам</strong>
+                </div>
+                <div class="card-body p-0">
+                    {% if os_rows %}
+                    <table class="table table-hover mb-0">
+                        <thead>
+                            <tr>
+                                <th>Версия ОС</th>
+                                <th class="text-end">ВМ</th>
+                                <th>Поддержка</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for row in os_rows %}
+                            <tr>
+                                <td>
+                                    {% if row.is_known %}
+                                        <a href="{% url 'virtualization:virtualmachine_list' %}?cf_os_pretty_name={{ row.name|urlencode }}">{{ row.name }}</a>
+                                    {% else %}
+                                        <span class="text-muted">{{ row.name }}</span>
+                                    {% endif %}
+                                </td>
+                                <td class="text-end">{{ row.vm_count }}</td>
+                                <td>
+                                    {% if row.os.eol_status == 'expired' %}
+                                        <span class="badge bg-danger">Просрочено</span>
+                                    {% elif row.os.eol_status == 'soon' %}
+                                        <span class="badge bg-warning text-dark">Скоро истекает</span>
+                                    {% elif row.os.eol_status == 'ok' %}
+                                        <span class="badge bg-success">До {{ row.os.eol_date }}</span>
+                                    {% elif row.os %}
+                                        <span class="text-muted small">Дата не указана</span>
+                                    {% else %}
+                                        <span class="text-muted small">Нет в реестре</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                    {% else %}
+                    <div class="text-muted text-center py-4">Нет данных об операционных системах.</div>
+                    {% endif %}
+                </div>
+                <div class="card-footer small text-muted">
+                    Топ-15 версий по количеству ВМ, всего версий: {{ os_versions_total }}.
+                    Статус поддержки — из реестра
+                    <a href="{% url 'plugins:netbox_obudozer:operatingsystem_list' %}">Версии ОС</a>.
+                </div>
+            </div>
+        </div>
+
+        {# ── Домены по репозиториям ─────────────────────────────────────── #}
+        <div class="col-md-5">
+            <div class="card h-100">
+                <div class="card-header">
+                    <strong><i class="mdi mdi-web"></i> Домены по репозиториям</strong>
+                </div>
+                <div class="card-body p-0">
+                    {% if domain_rows %}
+                    <table class="table table-hover mb-0">
+                        <thead>
+                            <tr>
+                                <th>Репозиторий</th>
+                                <th class="text-end">Доменов</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for row in domain_rows %}
+                            <tr>
+                                <td><code>{{ row.project }}</code></td>
+                                <td class="text-end">{{ row.domain_count }}</td>
+                            </tr>
+                            {% endfor %}
+                            {% if domains_unassigned %}
+                            <tr>
+                                <td class="text-muted">Вне настроенных репозиториев</td>
+                                <td class="text-end text-muted">{{ domains_unassigned }}</td>
+                            </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                    {% else %}
+                    <div class="text-muted text-center py-4">
+                        Репозитории не настроены — задайте <code>gitlab_projects</code> в PLUGINS_CONFIG.
+                    </div>
+                    {% endif %}
+                </div>
+                <div class="card-footer small text-muted">
+                    Домен может встречаться в нескольких репозиториях, поэтому сумма
+                    по строкам может превышать общее число доменов ({{ domain_total }}).
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

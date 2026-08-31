@@ -11,6 +11,13 @@ from netbox.choices import ButtonColorChoices
 menu = PluginMenu(
     label='Obudozer',
     groups=(
+        ('Обзор', (
+            PluginMenuItem(
+                link='plugins:netbox_obudozer:dashboard',
+                link_text='Дашборд',
+                permissions=['netbox_obudozer.view_dashboardaccess'],
+            ),
+        )),
         ('Услуги', (
             PluginMenuItem(
                 link='plugins:netbox_obudozer:obuservices_list',

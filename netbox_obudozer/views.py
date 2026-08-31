@@ -7,7 +7,7 @@ from django.shortcuts import render, redirect
 from django.contrib import messages
 from django.contrib.auth.decorators import permission_required
 from django.http import JsonResponse
-from django.db.models import Count, Sum
+from django.db.models import Count, Q, Sum
 
 from netbox.views.generic import (
     ObjectListView,
@@ -387,39 +387,10 @@ class ObuServicesDetailView(ObjectView):
     def get_extra_context(self, request, instance):
         from virtualization.models import VirtualMachine
         from .models import ServiceVMAssignment
+        from .resources import vm_resources
 
         vm_ids = ServiceVMAssignment.objects.filter(service=instance).values_list('virtual_machine_id', flat=True)
-        active_vm_ids = VirtualMachine.objects.filter(id__in=vm_ids, status='active').values_list('id', flat=True)
-        totals = VirtualMachine.objects.filter(id__in=active_vm_ids).aggregate(
-            total_vcpus=Sum('vcpus'),
-            total_memory=Sum('memory'),
-        )
-
-        from virtualization.models import VirtualDisk
-        disk_sum = VirtualDisk.objects.filter(virtual_machine_id__in=active_vm_ids).aggregate(total=Sum('size'))
-        total_disk_mb = disk_sum['total'] or 0
-
-        def fmt_memory(mb):
-            # memory хранится в бинарных МБ (1 ГБ = 1024 МБ)
-            if mb >= 1024 * 1024:
-                return f"{mb / 1024 / 1024:.1f} ТБ"
-            if mb >= 1024:
-                return f"{mb / 1024:.1f} ГБ"
-            return f"{mb} МБ"
-
-        def fmt_disk(mb):
-            # VirtualDisk.size хранится в десятичных МБ (1 ГБ = 1000 МБ, как в vCenter UI)
-            if mb >= 1000 * 1000:
-                return f"{mb / 1000 / 1000:.1f} ТБ"
-            if mb >= 1000:
-                return f"{mb / 1000:.1f} ГБ"
-            return f"{mb} МБ"
-
-        return {
-            'total_vcpus': int(totals['total_vcpus'] or 0),
-            'total_memory': fmt_memory(totals['total_memory'] or 0),
-            'total_disk': fmt_disk(total_disk_mb),
-        }
+        return vm_resources(VirtualMachine.objects.filter(id__in=vm_ids))
 
 
 @register_model_view(ObuServices, 'add', detail=False)
@@ -563,14 +534,15 @@ class OperatingSystemBulkDeleteView(BulkDeleteView):
     table = OperatingSystemTable
 
 
-@permission_required('netbox_obudozer.view_eolaccess')
-def eol_dashboard_view(request):
+def get_eol_vm_rows():
     """
-    Дашборд VM с устаревшей ОС.
+    ВМ, чья версия ОС (custom field os_pretty_name) зарегистрирована в реестре
+    OperatingSystem с датой окончания поддержки в прошлом ('expired') либо
+    в ближайшие eol_warning_days дней ('soon').
 
-    Показывает виртуальные машины, чья версия ОС (по custom field os_pretty_name)
-    зарегистрирована в реестре OperatingSystem с датой окончания поддержки
-    в прошлом ('expired') либо в ближайшие eol_warning_days дней ('soon').
+    Returns:
+        list of dict {'vm': VirtualMachine, 'os': OperatingSystem},
+        отсортированный: сначала просроченные, внутри — по дате EOL.
     """
     from virtualization.models import VirtualMachine
 
@@ -584,7 +556,6 @@ def eol_dashboard_view(request):
     if os_by_name:
         # OR из экзакт-матчей по ключу JSONField (надёжнее, чем __in по key-transform),
         # остаётся одним SQL-запросом
-        from django.db.models import Q
         q = Q()
         for name in os_by_name:
             q |= Q(custom_field_data__os_pretty_name=name)
@@ -595,6 +566,177 @@ def eol_dashboard_view(request):
                 rows.append({'vm': vm, 'os': os_obj})
 
     rows.sort(key=lambda r: (0 if r['os'].eol_status == 'expired' else 1, r['os'].eol_date))
+    return rows
+
+
+def _vcenter_rows():
+    """
+    Статистика ВМ по vCenter. Один vCenter = одна ClusterGroup (см. CLAUDE.md),
+    поэтому группируем по cluster__group.
+
+    ВМ вне групп (заведённые вручную, без кластера) собираются в отдельную
+    строку с group_id=None — они не относятся ни к одному vCenter.
+    """
+    from virtualization.models import VirtualMachine
+    from .resources import format_memory
+
+    grouped = (
+        VirtualMachine.objects
+        .values('cluster__group__id', 'cluster__group__name')
+        .annotate(
+            vm_count=Count('id'),
+            active_count=Count('id', filter=Q(status='active')),
+            failed_count=Count('id', filter=Q(status='failed')),
+            vcpus=Sum('vcpus', filter=Q(status='active')),
+            memory=Sum('memory', filter=Q(status='active')),
+        )
+        .order_by('cluster__group__name')
+    )
+
+    rows = []
+    for item in grouped:
+        rows.append({
+            'group_id': item['cluster__group__id'],
+            'name': item['cluster__group__name'] or 'Вне vCenter',
+            'vm_count': item['vm_count'],
+            'active_count': item['active_count'],
+            'failed_count': item['failed_count'],
+            'vcpus': int(item['vcpus'] or 0),
+            'memory': format_memory(item['memory'] or 0),
+        })
+
+    # Строка «Вне vCenter» — всегда последней, независимо от сортировки по имени
+    rows.sort(key=lambda r: (r['group_id'] is None, r['name']))
+    return rows
+
+
+def _os_rows(limit=15):
+    """
+    Распределение ВМ по версиям ОС (custom field os_pretty_name), топ-N по количеству.
+
+    К каждой строке подтягивается запись реестра OperatingSystem, если она есть,
+    чтобы показать статус поддержки.
+    """
+    from django.db.models.fields.json import KeyTextTransform
+    from virtualization.models import VirtualMachine
+
+    # Агрегат по версиям, а не по ВМ — строк немного, материализуем целиком
+    counts = list(
+        VirtualMachine.objects
+        .annotate(os_name=KeyTextTransform('os_pretty_name', 'custom_field_data'))
+        .values('os_name')
+        .annotate(vm_count=Count('id'))
+        .order_by('-vm_count')
+    )
+
+    registry = {os.name: os for os in OperatingSystem.objects.all()}
+
+    rows = []
+    for item in counts[:limit]:
+        name = item['os_name']
+        rows.append({
+            'name': name or 'Не определена',
+            'is_known': bool(name),
+            'vm_count': item['vm_count'],
+            'os': registry.get(name),
+        })
+
+    # ВМ без заполненного os_pretty_name отдельной версией ОС не считаем
+    total_versions = sum(1 for item in counts if item['os_name'])
+    return rows, total_versions
+
+
+def _domain_rows():
+    """
+    Количество доменов в каждом из настроенных GitLab-репозиториев.
+
+    Репозитории берутся из gitlab_projects (PLUGINS_CONFIG), домен относится
+    к репозиторию, если в его CF nginx_configs есть строка вида '{project}/{file}'
+    (см. _build_configs_text в nginx_import.py). Матчим по известному списку
+    проектов, а не по префиксу до первого '/', т.к. путь проекта сам содержит слэш.
+
+    Один домен может встречаться в нескольких репозиториях — тогда он попадает
+    в счётчик каждого, поэтому сумма по строкам может превышать общее число доменов.
+    """
+    from .gitlab_client import get_plugin_config
+
+    projects = get_plugin_config().get('gitlab_projects', [])
+    counts = {project: 0 for project in projects}
+    unassigned = 0
+
+    for cf_data in NginxDomain.objects.values_list('custom_field_data', flat=True):
+        lines = ((cf_data or {}).get('nginx_configs') or '').splitlines()
+        matched = False
+        for project in projects:
+            if any(line.startswith(f'{project}/') for line in lines):
+                counts[project] += 1
+                matched = True
+        if not matched:
+            unassigned += 1
+
+    return (
+        [{'project': project, 'domain_count': count} for project, count in counts.items()],
+        unassigned,
+    )
+
+
+@permission_required('netbox_obudozer.view_dashboardaccess')
+def dashboard_view(request):
+    """
+    Сводный дашборд плагина: ВМ по vCenter и по ОС, домены по репозиториям,
+    услуги с суммарными ресурсами и блок возможных проблем.
+    """
+    from virtualization.models import VirtualMachine
+    from .models import ServiceVMAssignment
+    from .resources import vm_resources
+
+    vm_total = VirtualMachine.objects.count()
+    vm_active = VirtualMachine.objects.filter(status='active').count()
+
+    # Считаем по ServiceVMAssignment, а не по custom field has_obu_services:
+    # назначения — источник истины, CF может отстать до ресинхронизации
+    vms_with_service_ids = list(
+        ServiceVMAssignment.objects.values_list('virtual_machine_id', flat=True).distinct()
+    )
+    vm_without_service = VirtualMachine.objects.exclude(id__in=vms_with_service_ids).count()
+
+    os_rows, os_versions_total = _os_rows()
+    domain_rows, domains_unassigned = _domain_rows()
+
+    eol_rows = get_eol_vm_rows()
+    problem_domains = NginxDomain.objects.filter(
+        Q(custom_field_data__nginx_status='unresolved')
+        | Q(custom_field_data__nginx_status='loop')
+    ).count()
+
+    return render(request, 'netbox_obudozer/dashboard.html', {
+        'vm_total': vm_total,
+        'vm_active': vm_active,
+        'vm_without_service': vm_without_service,
+        'service_total': ObuServices.objects.count(),
+        'domain_total': NginxDomain.objects.count(),
+
+        'vcenter_rows': _vcenter_rows(),
+        'os_rows': os_rows,
+        'os_versions_total': os_versions_total,
+        'domain_rows': domain_rows,
+        'domains_unassigned': domains_unassigned,
+
+        'service_vm_count': len(vms_with_service_ids),
+        'service_resources': vm_resources(
+            VirtualMachine.objects.filter(id__in=vms_with_service_ids)
+        ),
+
+        'eol_expired_count': sum(1 for r in eol_rows if r['os'].eol_status == 'expired'),
+        'eol_soon_count': sum(1 for r in eol_rows if r['os'].eol_status == 'soon'),
+        'problem_domains': problem_domains,
+    })
+
+
+@permission_required('netbox_obudozer.view_eolaccess')
+def eol_dashboard_view(request):
+    """Дашборд VM с устаревшей ОС."""
+    rows = get_eol_vm_rows()
 
     return render(request, 'netbox_obudozer/eol_dashboard.html', {
         'rows': rows,
