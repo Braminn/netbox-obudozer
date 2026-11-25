@@ -110,12 +110,19 @@ def recalc_problems_on_os_change(sender, instance, **kwargs):
 @receiver([post_save, post_delete], sender=ServiceVMAssignment)
 def recalc_problems_on_assignment_change(sender, instance, **kwargs):
     """
-    Пересчитывает проблемы услуги при привязке/отвязке ВМ: услуга наследует
-    проблемы своих ВМ, поэтому набор ВМ влияет на service_problems.
-    При каскадном удалении самой услуги фильтр просто ничего не найдёт.
+    Пересчитывает проблемы при привязке/отвязке ВМ:
+    - самой ВМ — меняется has_obu_services (проверка vm_no_service). Флаг к этому
+      моменту уже обновлён: sync_vm_services_custom_field объявлен выше в этом
+      файле, а Django вызывает обработчики в порядке подключения;
+    - услуги — она наследует проблемы своих ВМ, набор ВМ влияет на service_problems.
+      Пересчитываем именно instance.service_id: при отвязке ВМ этой услуги
+      среди её услуг уже нет, каскад от ВМ её бы не затронул.
+    При каскадном удалении ВМ/услуги фильтры просто ничего не найдут.
     """
-    from .problems import recalc_service_problems
+    from virtualization.models import VirtualMachine
+    from .problems import recalc_service_problems, recalc_vm_problems
 
+    recalc_vm_problems(VirtualMachine.objects.filter(pk=instance.virtual_machine_id), cascade=False)
     recalc_service_problems(ObuServices.objects.filter(pk=instance.service_id))
 
 

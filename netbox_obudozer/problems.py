@@ -34,6 +34,9 @@ SERVICE_DATE_END_FIELD = 'date_end'
 # Custom field с названием ОС у ВМ — заполняется синхронизацией vCenter
 VM_OS_FIELD = 'os_pretty_name'
 
+# Custom field «Имеет OBU сервис» (boolean) у ВМ — ведётся сигналом на ServiceVMAssignment
+VM_HAS_SERVICES_FIELD = 'has_obu_services'
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Базовые классы
@@ -46,10 +49,13 @@ class ProblemCheck:
     code  — значение в multiselect (стабильный идентификатор, не менять после релиза)
     label — человекочитаемое название, показывается в UI
     color — цвет варианта в ChoiceSet (имена цветов NetBox: red, orange, ...)
+    inheritable — наследуется ли проблема родительской целью (ВМ → услуга).
+                  False для проблем, которые у родителя не имеют смысла.
     """
     code = None
     label = None
     color = 'red'
+    inheritable = True
 
     def evaluate(self, objects, today):
         """
@@ -102,9 +108,14 @@ class ProblemTarget:
         if self.inherit_from:
             result += [
                 (code, f'{self.inherit_label_prefix}{label}', color)
-                for code, label, color in self.inherit_from.choices
+                for code, label, color in self.inherit_from.inheritable_choices
             ]
         return result
+
+    @property
+    def inheritable_choices(self):
+        """Варианты, которые наследует родительская цель (проверки с inheritable=True)."""
+        return [(c.code, c.label, c.color) for c in self.checks if c.inheritable]
 
     def badges(self, codes):
         """Коды → список {'label', 'color'} для отображения (неизвестные коды пропускаются)."""
@@ -176,6 +187,24 @@ class VMOsUnknownCheck(ProblemCheck):
         }
 
 
+class VMNoServiceCheck(ProblemCheck):
+    """
+    CF has_obu_services = false или пустое (флаг ведёт сигнал на ServiceVMAssignment;
+    у новых ВМ из vCenter он не заполнен, пока ВМ не привязали к услуге).
+    Не наследуется: у ВМ без услуги нет услуги, которой её передавать.
+    """
+    code = 'vm_no_service'
+    label = 'ВМ без услуги'
+    color = 'red'
+    inheritable = False
+
+    def evaluate(self, objects, today):
+        return {
+            vm.pk for vm in objects
+            if not vm.custom_field_data.get(VM_HAS_SERVICES_FIELD)
+        }
+
+
 def _vms_with_os_status(objects, today, status):
     """
     pk ВМ, у которых OS Pretty Name совпадает с записью реестра OperatingSystem
@@ -227,6 +256,7 @@ VM_TARGET = ProblemTarget(
         VMOsUnknownCheck(),
         VMOsEolCheck(),
         VMOsEolSoonCheck(),
+        VMNoServiceCheck(),
     ],
 )
 
@@ -302,7 +332,7 @@ def recalc_problems(target, queryset=None, logger=None):
 
     # Наследование: коды проблем дочерних объектов (уже посчитанные) — без повторов
     if target.inherit_from:
-        inherited_codes = {code for code, _, _ in target.inherit_from.choices}
+        inherited_codes = {code for code, _, _ in target.inherit_from.inheritable_choices}
         for pk, codes in target.children(list(problems)):
             problems[pk].update(code for code in (codes or []) if code in inherited_codes)
 
