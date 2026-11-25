@@ -208,13 +208,13 @@ class VMNoServiceCheck(ProblemCheck):
 def _vms_with_os_status(objects, today, status):
     """
     pk ВМ, у которых OS Pretty Name совпадает с записью реестра OperatingSystem
-    в статусе status ('expired' / 'soon', см. OperatingSystem.eol_status_on).
-    ОС без записи в реестре или без eol_date проблемой не считаются.
+    в статусе status ('expired' / 'soon' / 'unknown', см. OperatingSystem.eol_status_on).
+    ОС без записи в реестре не учитываются (синхронизация заводит записи сама).
     """
     from .models import OperatingSystem
 
     os_names = {
-        os.name for os in OperatingSystem.objects.exclude(eol_date__isnull=True)
+        os.name for os in OperatingSystem.objects.only('name', 'eol_date')
         if os.eol_status_on(today) == status
     }
     if not os_names:
@@ -242,6 +242,16 @@ class VMOsEolSoonCheck(ProblemCheck):
         return _vms_with_os_status(objects, today, 'soon')
 
 
+class VMOsEolUnknownCheck(ProblemCheck):
+    """У ОС в реестре не задана дата окончания поддержки (статус «Дата не задана»)."""
+    code = 'vm_os_eol_unknown'
+    label = 'Дата EOL не задана'
+    color = 'gray'
+
+    def evaluate(self, objects, today):
+        return _vms_with_os_status(objects, today, 'unknown')
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Цели (реестр). Порядок checks задаёт порядок кодов в поле.
 # ──────────────────────────────────────────────────────────────────────────────
@@ -256,6 +266,7 @@ VM_TARGET = ProblemTarget(
         VMOsUnknownCheck(),
         VMOsEolCheck(),
         VMOsEolSoonCheck(),
+        VMOsEolUnknownCheck(),
         VMNoServiceCheck(),
     ],
 )
