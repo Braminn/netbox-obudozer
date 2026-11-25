@@ -8,7 +8,7 @@ Django signals для автоматической синхронизации cu
 """
 from django.db.models.signals import post_save, post_delete
 from django.dispatch import receiver
-from .models import ServiceVMAssignment, ObuServices
+from .models import ServiceVMAssignment, ObuServices, OperatingSystem
 
 
 @receiver([post_save, post_delete], sender=ServiceVMAssignment)
@@ -88,6 +88,21 @@ def recalc_problems_on_service_save(sender, instance, **kwargs):
         ObuServices.objects.filter(pk=instance.pk)
         .values_list(f'custom_field_data__{SERVICE_PROBLEMS_FIELD}', flat=True)
         .first()
+    )
+
+
+@receiver([post_save, post_delete], sender=OperatingSystem)
+def recalc_problems_on_os_change(sender, instance, **kwargs):
+    """
+    Пересчитывает проблемы ВМ с этой ОС (vm_os_eol / vm_os_eol_soon) после
+    изменения или удаления записи реестра версий ОС — например, когда
+    администратор проставил дату окончания поддержки.
+    """
+    from virtualization.models import VirtualMachine
+    from .problems import recalc_vm_problems, VM_OS_FIELD
+
+    recalc_vm_problems(
+        VirtualMachine.objects.filter(**{f'custom_field_data__{VM_OS_FIELD}': instance.name})
     )
 
 

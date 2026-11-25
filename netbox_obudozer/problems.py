@@ -135,6 +135,43 @@ class VMOsUnknownCheck(ProblemCheck):
         }
 
 
+def _vms_with_os_status(objects, today, status):
+    """
+    pk ВМ, у которых OS Pretty Name совпадает с записью реестра OperatingSystem
+    в статусе status ('expired' / 'soon', см. OperatingSystem.eol_status_on).
+    ОС без записи в реестре или без eol_date проблемой не считаются.
+    """
+    from .models import OperatingSystem
+
+    os_names = {
+        os.name for os in OperatingSystem.objects.exclude(eol_date__isnull=True)
+        if os.eol_status_on(today) == status
+    }
+    if not os_names:
+        return set()
+    return {vm.pk for vm in objects if vm.custom_field_data.get(VM_OS_FIELD) in os_names}
+
+
+class VMOsEolCheck(ProblemCheck):
+    """Дата окончания поддержки ОС (OperatingSystem.eol_date) в прошлом."""
+    code = 'vm_os_eol'
+    label = 'Закончилась поддержка ОС'
+    color = 'red'
+
+    def evaluate(self, objects, today):
+        return _vms_with_os_status(objects, today, 'expired')
+
+
+class VMOsEolSoonCheck(ProblemCheck):
+    """До окончания поддержки ОС осталось не больше eol_warning_days дней."""
+    code = 'vm_os_eol_soon'
+    label = 'Скоро закончится поддержка ОС'
+    color = 'yellow'
+
+    def evaluate(self, objects, today):
+        return _vms_with_os_status(objects, today, 'soon')
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Цели (реестр). Порядок checks задаёт порядок кодов в поле.
 # ──────────────────────────────────────────────────────────────────────────────
@@ -159,6 +196,8 @@ VM_TARGET = ProblemTarget(
     choiceset='Проблемы ВМ',
     checks=[
         VMOsUnknownCheck(),
+        VMOsEolCheck(),
+        VMOsEolSoonCheck(),
     ],
 )
 

@@ -198,11 +198,14 @@ class OperatingSystem(NetBoxModel):
     @property
     def eol_status(self):
         """'unknown' / 'ok' / 'soon' / 'expired' относительно текущей даты."""
+        from django.utils import timezone
+        return self.eol_status_on(timezone.localdate())
+
+    def eol_status_on(self, today):
+        """'unknown' / 'ok' / 'soon' / 'expired' относительно даты today."""
         if not self.eol_date:
             return 'unknown'
         from datetime import timedelta
-        from django.utils import timezone
-        today = timezone.now().date()
         if self.eol_date < today:
             return 'expired'
         if self.eol_date <= today + timedelta(days=_get_eol_warning_days()):
