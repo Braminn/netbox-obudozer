@@ -62,6 +62,41 @@
         </div>
     </div>
 
+    {# ── Проблемы услуг и ВМ (CF service_problems / vm_problems, см. problems.py) ── #}
+    <div class="row mb-4">
+        {% for block in problem_blocks %}
+        <div class="col-md-6 mb-3 mb-md-0">
+            <div class="card h-100">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <strong><i class="mdi {{ block.icon }}"></i> Проблемы: {{ block.title }}</strong>
+                    <span class="small text-muted">
+                        с проблемами:
+                        <a href="{{ block.total_url }}" class="fw-bold {% if block.total %}text-danger{% else %}text-muted{% endif %}">{{ block.total }}</a>
+                    </span>
+                </div>
+                <div class="card-body p-0">
+                    <table class="table table-hover mb-0">
+                        <tbody>
+                            {% for row in block.rows %}
+                            <tr>
+                                <td>
+                                    <a href="{{ row.url }}" class="text-decoration-none">
+                                        <span class="badge text-bg-{{ row.color }}">{{ row.label }}</span>
+                                    </a>
+                                </td>
+                                <td class="text-end">
+                                    <a href="{{ row.url }}" class="{% if not row.count %}text-muted{% endif %}">{{ row.count }}</a>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
     {# ── Возможные проблемы ─────────────────────────────────────────────── #}
     <div class="row mb-4">
         <div class="col-12">

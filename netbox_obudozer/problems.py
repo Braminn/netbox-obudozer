@@ -300,6 +300,33 @@ SERVICE_PROBLEMS_FIELD = SERVICE_TARGET.field
 # Пересчёт
 # ──────────────────────────────────────────────────────────────────────────────
 
+def problem_summary(target):
+    """
+    Сводка по проблемам цели для дашборда — одним запросом.
+
+    Returns:
+        dict: total — объектов с хотя бы одной проблемой,
+              rows — [{'code', 'label', 'color', 'count'}] по всем вариантам поля
+              (включая нулевые), в порядке target.choices.
+    """
+    counts = {}
+    total = 0
+    for codes in target.model.objects.values_list(f'custom_field_data__{target.field}', flat=True):
+        if not codes:
+            continue
+        total += 1
+        for code in codes:
+            counts[code] = counts.get(code, 0) + 1
+
+    return {
+        'total': total,
+        'rows': [
+            {'code': code, 'label': label, 'color': color, 'count': counts.get(code, 0)}
+            for code, label, color in target.choices
+        ],
+    }
+
+
 def recalc_problems(target, queryset=None, logger=None):
     """
     Пересчитывает проблемы объектов цели и записывает их в её custom field.

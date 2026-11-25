@@ -722,9 +722,29 @@ def dashboard_view(request):
     Сводный дашборд плагина: ВМ по vCenter и по ОС, домены по репозиториям,
     услуги с суммарными ресурсами и блок возможных проблем.
     """
+    from django.urls import reverse
     from virtualization.models import VirtualMachine
     from .models import ServiceVMAssignment
+    from .problems import SERVICE_TARGET, VM_TARGET, problem_summary
     from .resources import vm_resources
+
+    # Блок «Проблемы»: по каждому варианту поля проблем — счётчик и ссылка на
+    # стандартный список NetBox с фильтром по этому коду
+    problem_blocks = []
+    for title, icon, target, list_url in (
+        ('Услуги', 'mdi-briefcase-outline', SERVICE_TARGET, reverse('plugins:netbox_obudozer:obuservices_list')),
+        ('Виртуальные машины', 'mdi-monitor', VM_TARGET, reverse('virtualization:virtualmachine_list')),
+    ):
+        summary = problem_summary(target)
+        for row in summary['rows']:
+            row['url'] = f'{list_url}?cf_{target.field}={row["code"]}'
+        problem_blocks.append({
+            'title': title,
+            'icon': icon,
+            'total': summary['total'],
+            'total_url': f'{list_url}?cf_{target.field}__empty=false',
+            'rows': summary['rows'],
+        })
 
     vm_total = VirtualMachine.objects.count()
     vm_active = VirtualMachine.objects.filter(status='active').count()
@@ -766,6 +786,7 @@ def dashboard_view(request):
         'eol_expired_count': sum(1 for r in eol_rows if r['os'].eol_status == 'expired'),
         'eol_soon_count': sum(1 for r in eol_rows if r['os'].eol_status == 'soon'),
         'problem_domains': problem_domains,
+        'problem_blocks': problem_blocks,
     })
 
 
