@@ -75,7 +75,7 @@ def recalc_problems_on_service_save(sender, instance, **kwargs):
     Пересчитывает проблемы услуги (CF service_problems) сразу после её сохранения,
     чтобы на странице услуги после редактирования были видны актуальные проблемы.
 
-    Рекурсии нет: recalc_service_problems() пишет через QuerySet.update(),
+    Рекурсии нет: recalc_service_problems() пишет через bulk_update(),
     который post_save не вызывает.
     """
     from .problems import recalc_service_problems, SERVICE_PROBLEMS_FIELD
@@ -96,7 +96,8 @@ def recalc_problems_on_os_change(sender, instance, **kwargs):
     """
     Пересчитывает проблемы ВМ с этой ОС (vm_os_eol / vm_os_eol_soon) после
     изменения или удаления записи реестра версий ОС — например, когда
-    администратор проставил дату окончания поддержки.
+    администратор проставил дату окончания поддержки. Следом каскадно
+    пересчитываются услуги этих ВМ (наследуют проблемы ВМ).
     """
     from virtualization.models import VirtualMachine
     from .problems import recalc_vm_problems, VM_OS_FIELD
@@ -104,6 +105,18 @@ def recalc_problems_on_os_change(sender, instance, **kwargs):
     recalc_vm_problems(
         VirtualMachine.objects.filter(**{f'custom_field_data__{VM_OS_FIELD}': instance.name})
     )
+
+
+@receiver([post_save, post_delete], sender=ServiceVMAssignment)
+def recalc_problems_on_assignment_change(sender, instance, **kwargs):
+    """
+    Пересчитывает проблемы услуги при привязке/отвязке ВМ: услуга наследует
+    проблемы своих ВМ, поэтому набор ВМ влияет на service_problems.
+    При каскадном удалении самой услуги фильтр просто ничего не найдёт.
+    """
+    from .problems import recalc_service_problems
+
+    recalc_service_problems(ObuServices.objects.filter(pk=instance.service_id))
 
 
 @receiver([post_save, post_delete], sender=ServiceVMAssignment)

@@ -410,10 +410,23 @@ class ObuServicesDetailView(ObjectView):
     def get_extra_context(self, request, instance):
         from virtualization.models import VirtualMachine
         from .models import ServiceVMAssignment
+        from .problems import VM_TARGET
         from .resources import vm_resources
 
         vm_ids = ServiceVMAssignment.objects.filter(service=instance).values_list('virtual_machine_id', flat=True)
-        return vm_resources(VirtualMachine.objects.filter(id__in=vm_ids))
+        context = vm_resources(VirtualMachine.objects.filter(id__in=vm_ids))
+
+        # Строки таблицы ВМ с бейджами проблем каждой ВМ (из CF vm_problems)
+        assignments = instance.vm_assignments.select_related('virtual_machine__cluster')
+        context['vm_rows'] = [
+            {
+                'assignment': a,
+                'vm': a.virtual_machine,
+                'problems': VM_TARGET.badges(a.virtual_machine.custom_field_data.get(VM_TARGET.field)),
+            }
+            for a in assignments
+        ]
+        return context
 
 
 @register_model_view(ObuServices, 'add', detail=False)

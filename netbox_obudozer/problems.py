@@ -9,6 +9,12 @@
   SERVICE_TARGET (ObuServices → service_problems) и VM_TARGET (VirtualMachine → vm_problems).
 - Новая проверка = новый класс + строка в списке checks нужной цели.
   ChoiceSet поля собирается из этого же списка (см. custom_fields.ensure_problems_field).
+- Наследование: SERVICE_TARGET.inherit_from = VM_TARGET. Все проверки ВМ
+  автоматически становятся вариантами поля услуги (с префиксом «ВМ: »), а при
+  пересчёте услуга получает коды из уже посчитанного vm_problems своих ВМ
+  (без повторов). Какие именно ВМ проблемные — видно в таблице ВМ на странице
+  услуги (бейджи после имени ВМ).
+- Каскад: recalc_vm_problems(queryset) затем пересчитывает услуги этих ВМ.
 - recalc_problems() прогоняет проверки цели и записывает список кодов в её поле.
   Пишутся только изменившиеся объекты и через bulk_update(): без записей
   в changelog и без сигналов post_save (иначе, например, сработал бы
@@ -59,19 +65,54 @@ class ProblemCheck:
 
 
 class ProblemTarget:
-    """Модель, в multiselect-поле которой пишутся коды проблем, и её проверки."""
+    """
+    Модель, в multiselect-поле которой пишутся коды проблем, и её проверки.
 
-    def __init__(self, model, field, label, description, choiceset, checks):
+    inherit_from — другая цель, чьи проблемы наследуются (услуга ← её ВМ).
+    Унаследованные коды совпадают с кодами дочерней цели, а лейблы получают
+    префикс inherit_label_prefix. children(pks) — функция, возвращающая пары
+    (pk объекта этой цели, список кодов проблем одного его дочернего объекта),
+    по одной паре на каждый дочерний объект. Коды берутся из уже посчитанного
+    поля дочерней цели, поэтому дочерняя цель пересчитывается первой.
+    """
+
+    def __init__(self, model, field, label, description, choiceset, checks,
+                 inherit_from=None, children=None, inherit_label_prefix=''):
         self.model_label = model          # 'app_label.ModelName' — модель берём лениво
         self.field = field
         self.label = label
         self.description = description
         self.choiceset = choiceset
         self.checks = checks
+        self.inherit_from = inherit_from
+        self.children = children
+        self.inherit_label_prefix = inherit_label_prefix
 
     @property
     def model(self):
         return apps.get_model(self.model_label)
+
+    @property
+    def choices(self):
+        """
+        Варианты поля: (code, label, color) — сначала собственные проверки,
+        затем унаследованные. Порядок задаёт порядок кодов в поле.
+        """
+        result = [(c.code, c.label, c.color) for c in self.checks]
+        if self.inherit_from:
+            result += [
+                (code, f'{self.inherit_label_prefix}{label}', color)
+                for code, label, color in self.inherit_from.choices
+            ]
+        return result
+
+    def badges(self, codes):
+        """Коды → список {'label', 'color'} для отображения (неизвестные коды пропускаются)."""
+        known = {code: (label, color) for code, label, color in self.choices}
+        return [
+            {'label': known[code][0], 'color': known[code][1]}
+            for code in (codes or []) if code in known
+        ]
 
 
 def _parse_date(value):
@@ -176,18 +217,6 @@ class VMOsEolSoonCheck(ProblemCheck):
 # Цели (реестр). Порядок checks задаёт порядок кодов в поле.
 # ──────────────────────────────────────────────────────────────────────────────
 
-SERVICE_TARGET = ProblemTarget(
-    model='netbox_obudozer.ObuServices',
-    field='service_problems',
-    label='Проблемы сервиса',
-    description='Выявленные проблемы услуги (заполняется автоматически, см. problems.py)',
-    choiceset='Проблемы услуг OBU',
-    checks=[
-        ServiceExpiredCheck(),
-        ServiceNoEndDateCheck(),
-    ],
-)
-
 VM_TARGET = ProblemTarget(
     model='virtualization.VirtualMachine',
     field='vm_problems',
@@ -201,7 +230,37 @@ VM_TARGET = ProblemTarget(
     ],
 )
 
-PROBLEM_TARGETS = [SERVICE_TARGET, VM_TARGET]
+
+def _service_vm_problems(service_pks):
+    """
+    Пары (pk услуги, коды проблем ВМ) по всем привязанным ВМ — одним запросом.
+    Коды берутся из уже посчитанного CF vm_problems, проверки ВМ не перезапускаются.
+    """
+    from .models import ServiceVMAssignment
+
+    return ServiceVMAssignment.objects.filter(service_id__in=service_pks).values_list(
+        'service_id', f'virtual_machine__custom_field_data__{VM_TARGET.field}'
+    )
+
+
+SERVICE_TARGET = ProblemTarget(
+    model='netbox_obudozer.ObuServices',
+    field='service_problems',
+    label='Проблемы сервиса',
+    description='Выявленные проблемы услуги и её ВМ (заполняется автоматически, см. problems.py)',
+    choiceset='Проблемы услуг OBU',
+    checks=[
+        ServiceExpiredCheck(),
+        ServiceNoEndDateCheck(),
+    ],
+    # Все проблемы ВМ автоматически наследуются услугой
+    inherit_from=VM_TARGET,
+    children=_service_vm_problems,
+    inherit_label_prefix='ВМ: ',
+)
+
+# Порядок важен: дочерние цели раньше родительских
+PROBLEM_TARGETS = [VM_TARGET, SERVICE_TARGET]
 
 # Обратная совместимость с кодом, импортирующим имя поля услуги
 SERVICE_PROBLEMS_FIELD = SERVICE_TARGET.field
@@ -241,7 +300,13 @@ def recalc_problems(target, queryset=None, logger=None):
         for pk in check.evaluate(objects, today):
             problems[pk].add(check.code)
 
-    order = [check.code for check in target.checks]
+    # Наследование: коды проблем дочерних объектов (уже посчитанные) — без повторов
+    if target.inherit_from:
+        inherited_codes = {code for code, _, _ in target.inherit_from.choices}
+        for pk, codes in target.children(list(problems)):
+            problems[pk].update(code for code in (codes or []) if code in inherited_codes)
+
+    order = [code for code, _, _ in target.choices]
     changed = []
     for obj in objects:
         new_value = [code for code in order if code in problems[obj.pk]] or None
@@ -274,19 +339,27 @@ def recalc_service_problems(queryset=None, logger=None):
     return recalc_problems(SERVICE_TARGET, queryset, logger)
 
 
-def recalc_vm_problems(queryset=None, logger=None):
-    """Пересчёт проблем ВМ (CF vm_problems)."""
-    return recalc_problems(VM_TARGET, queryset, logger)
+def recalc_vm_problems(queryset=None, logger=None, cascade=True):
+    """
+    Пересчёт проблем ВМ (CF vm_problems).
+
+    cascade=True — затем пересчитываются услуги этих ВМ, т.к. они наследуют
+    проблемы ВМ. При полном пересчёте (recalc_all_problems) каскад не нужен:
+    услуги и так пересчитываются все следом.
+    """
+    from .models import ObuServices
+
+    stats = recalc_problems(VM_TARGET, queryset, logger)
+    if cascade and queryset is not None:
+        recalc_service_problems(
+            ObuServices.objects.filter(vm_assignments__virtual_machine__in=queryset).distinct()
+        )
+    return stats
 
 
 def recalc_all_problems(logger=None):
-    """
-    Пересчёт проблем всех целей.
-
-    Порядок важен на будущее: сначала ВМ, потом услуги — услуги будут
-    наследовать проблемы своих ВМ.
-    """
+    """Пересчёт проблем всех целей: сначала ВМ, потом услуги (наследуют проблемы ВМ)."""
     return {
-        'vm': recalc_vm_problems(logger=logger),
+        'vm': recalc_vm_problems(logger=logger, cascade=False),
         'service': recalc_service_problems(logger=logger),
     }

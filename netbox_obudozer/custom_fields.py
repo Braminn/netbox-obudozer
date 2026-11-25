@@ -233,14 +233,15 @@ def ensure_contact_custom_fields():
 
 def _ensure_problems_choiceset(target):
     """
-    ChoiceSet для поля проблем, собранный из проверок цели (target.checks).
+    ChoiceSet для поля проблем, собранный из проверок цели (target.choices —
+    собственные проверки + унаследованные от дочерней цели).
 
     Варианты синхронизируются при каждом вызове: новые проверки добавляются,
     лейблы и цвета обновляются. Удалённые из реестра коды тоже убираются —
     после пересчёта ни у одного объекта их уже не будет.
     """
-    choices = [[check.code, check.label] for check in target.checks]
-    colors = {check.code: check.color for check in target.checks}
+    choices = [[code, label] for code, label, _ in target.choices]
+    colors = {code: color for code, _, color in target.choices}
 
     choiceset, created = CustomFieldChoiceSet.objects.get_or_create(
         name=target.choiceset,

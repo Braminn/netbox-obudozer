@@ -85,7 +85,7 @@
     <div class="col-md-12">
         <div class="card">
             <div class="card-header"><strong>Виртуальные машины</strong></div>
-            {% if object.vm_assignments.all %}
+            {% if vm_rows %}
             <table class="table table-hover">
                 <thead>
                     <tr>
@@ -96,20 +96,22 @@
                     </tr>
                 </thead>
                 <tbody>
-                    {% for assignment in object.vm_assignments.select_related %}
+                    {% for row in vm_rows %}
                     <tr>
                         <td>
-                            <a href="{{ assignment.virtual_machine.get_absolute_url }}">
-                                {{ assignment.virtual_machine.name }}
-                            </a>
+                            <a href="{{ row.vm.get_absolute_url }}">{{ row.vm.name }}</a>
+                            {# Проблемы ВМ (CF vm_problems), см. problems.py #}
+                            {% for problem in row.problems %}
+                                <span class="badge text-bg-{{ problem.color }} ms-1">{{ problem.label }}</span>
+                            {% endfor %}
                         </td>
-                        <td>{{ assignment.virtual_machine.cluster|default:"-" }}</td>
+                        <td>{{ row.vm.cluster|default:"-" }}</td>
                         <td>
-                            <span class="badge badge-{{ assignment.virtual_machine.get_status_color }}">
-                                {{ assignment.virtual_machine.get_status_display }}
+                            <span class="badge text-bg-{{ row.vm.get_status_color }}">
+                                {{ row.vm.get_status_display }}
                             </span>
                         </td>
-                        <td>{{ assignment.notes|placeholder }}</td>
+                        <td>{{ row.assignment.notes|placeholder }}</td>
                     </tr>
                     {% endfor %}
                 </tbody>
