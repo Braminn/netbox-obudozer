@@ -1,38 +1,41 @@
 """
-Выявление проблем услуг OBU и запись их в custom field услуги.
+Выявление проблем услуг OBU и виртуальных машин и запись их в custom fields.
 
 Архитектура:
-- Каждая проверка — класс-наследник ServiceCheck с кодом, лейблом и цветом.
-  Метод evaluate() получает список услуг пачкой и возвращает pk проблемных.
-- Реестр SERVICE_CHECKS — единственное место, где перечислены проверки.
-  Из него же собирается ChoiceSet для multiselect-поля service_problems,
-  поэтому новая проверка = новый класс + строка в реестре.
-- recalc_service_problems() прогоняет все проверки и записывает в CF
-  service_problems список кодов. Пишутся только изменившиеся услуги и через
-  QuerySet.update(): без записей в changelog и без сигналов post_save
-  (иначе сработал бы sync_tenant_to_vms на каждую услугу).
+- Проверка — класс-наследник ProblemCheck с кодом, лейблом и цветом.
+  Метод evaluate() получает список объектов пачкой и возвращает pk проблемных.
+- Цель (ProblemTarget) — модель + multiselect-поле, куда пишутся коды проблем,
+  + ChoiceSet для этого поля + список проверок. Сейчас цели две:
+  SERVICE_TARGET (ObuServices → service_problems) и VM_TARGET (VirtualMachine → vm_problems).
+- Новая проверка = новый класс + строка в списке checks нужной цели.
+  ChoiceSet поля собирается из этого же списка (см. custom_fields.ensure_problems_field).
+- recalc_problems() прогоняет проверки цели и записывает список кодов в её поле.
+  Пишутся только изменившиеся объекты и через bulk_update(): без записей
+  в changelog и без сигналов post_save (иначе, например, сработал бы
+  sync_tenant_to_vms на каждую услугу).
 
 Результат хранится в БД (а не считается на лету), чтобы по нему работали
 стандартные фильтры NetBox: ?cf_service_problems=service_expired.
 """
 from datetime import date
 
+from django.apps import apps
 from django.utils import timezone
 
-# Имя custom field со списком проблем услуги (multiselect)
-SERVICE_PROBLEMS_FIELD = 'service_problems'
-
-# Custom field «Действует до» (date) — создан вручную в NetBox, плагин его не создаёт
+# Custom field «Действует до» (date) у услуги — создан вручную в NetBox, плагин его не создаёт
 SERVICE_DATE_END_FIELD = 'date_end'
 
+# Custom field с названием ОС у ВМ — заполняется синхронизацией vCenter
+VM_OS_FIELD = 'os_pretty_name'
+
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Проверки
+# Базовые классы
 # ──────────────────────────────────────────────────────────────────────────────
 
-class ServiceCheck:
+class ProblemCheck:
     """
-    Базовый класс проверки услуги.
+    Базовый класс проверки.
 
     code  — значение в multiselect (стабильный идентификатор, не менять после релиза)
     label — человекочитаемое название, показывается в UI
@@ -42,17 +45,33 @@ class ServiceCheck:
     label = None
     color = 'red'
 
-    def evaluate(self, services, today):
+    def evaluate(self, objects, today):
         """
         Args:
-            services: список ObuServices (с загруженным custom_field_data)
+            objects: список объектов цели (с загруженным custom_field_data)
             today: текущая дата (передаётся снаружи, чтобы все проверки
                    одного прогона видели одну и ту же дату)
 
         Returns:
-            set[int] — pk услуг, у которых проблема есть
+            set[int] — pk объектов, у которых проблема есть
         """
         raise NotImplementedError
+
+
+class ProblemTarget:
+    """Модель, в multiselect-поле которой пишутся коды проблем, и её проверки."""
+
+    def __init__(self, model, field, label, description, choiceset, checks):
+        self.model_label = model          # 'app_label.ModelName' — модель берём лениво
+        self.field = field
+        self.label = label
+        self.description = description
+        self.choiceset = choiceset
+        self.checks = checks
+
+    @property
+    def model(self):
+        return apps.get_model(self.model_label)
 
 
 def _parse_date(value):
@@ -67,96 +86,168 @@ def _parse_date(value):
         return None
 
 
-class ServiceExpiredCheck(ServiceCheck):
+# ──────────────────────────────────────────────────────────────────────────────
+# Проверки услуг
+# ──────────────────────────────────────────────────────────────────────────────
+
+class ServiceExpiredCheck(ProblemCheck):
     """«Действует до» в прошлом."""
     code = 'service_expired'
     label = 'Истёк срок действия'
     color = 'red'
 
-    def evaluate(self, services, today):
+    def evaluate(self, objects, today):
         result = set()
-        for service in services:
+        for service in objects:
             date_end = _parse_date(service.custom_field_data.get(SERVICE_DATE_END_FIELD))
             if date_end and date_end < today:
                 result.add(service.pk)
         return result
 
 
-class ServiceNoEndDateCheck(ServiceCheck):
+class ServiceNoEndDateCheck(ProblemCheck):
     """«Действует до» не заполнено."""
     code = 'service_no_end_date'
     label = 'Не указан срок действия'
     color = 'orange'
 
-    def evaluate(self, services, today):
+    def evaluate(self, objects, today):
         return {
-            service.pk for service in services
+            service.pk for service in objects
             if not service.custom_field_data.get(SERVICE_DATE_END_FIELD)
         }
 
 
-# Реестр проверок услуг. Порядок задаёт порядок кодов в поле service_problems.
-SERVICE_CHECKS = [
-    ServiceExpiredCheck(),
-    ServiceNoEndDateCheck(),
-]
+# ──────────────────────────────────────────────────────────────────────────────
+# Проверки ВМ
+# ──────────────────────────────────────────────────────────────────────────────
+
+class VMOsUnknownCheck(ProblemCheck):
+    """OS Pretty Name пустое (обычно нет VMware Tools или ВМ заведена вручную)."""
+    code = 'vm_os_unknown'
+    label = 'ОС не определена'
+    color = 'orange'
+
+    def evaluate(self, objects, today):
+        return {
+            vm.pk for vm in objects
+            if not (vm.custom_field_data.get(VM_OS_FIELD) or '').strip()
+        }
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Цели (реестр). Порядок checks задаёт порядок кодов в поле.
+# ──────────────────────────────────────────────────────────────────────────────
+
+SERVICE_TARGET = ProblemTarget(
+    model='netbox_obudozer.ObuServices',
+    field='service_problems',
+    label='Проблемы сервиса',
+    description='Выявленные проблемы услуги (заполняется автоматически, см. problems.py)',
+    choiceset='Проблемы услуг OBU',
+    checks=[
+        ServiceExpiredCheck(),
+        ServiceNoEndDateCheck(),
+    ],
+)
+
+VM_TARGET = ProblemTarget(
+    model='virtualization.VirtualMachine',
+    field='vm_problems',
+    label='Проблемы ВМ',
+    description='Выявленные проблемы виртуальной машины (заполняется автоматически, см. problems.py)',
+    choiceset='Проблемы ВМ',
+    checks=[
+        VMOsUnknownCheck(),
+    ],
+)
+
+PROBLEM_TARGETS = [SERVICE_TARGET, VM_TARGET]
+
+# Обратная совместимость с кодом, импортирующим имя поля услуги
+SERVICE_PROBLEMS_FIELD = SERVICE_TARGET.field
 
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Пересчёт
 # ──────────────────────────────────────────────────────────────────────────────
 
-def recalc_service_problems(services=None, logger=None):
+def recalc_problems(target, queryset=None, logger=None):
     """
-    Пересчитывает проблемы услуг и записывает их в CF service_problems.
+    Пересчитывает проблемы объектов цели и записывает их в её custom field.
 
     Args:
-        services: queryset ObuServices для пересчёта (по умолчанию — все)
+        target: ProblemTarget
+        queryset: объекты для пересчёта (по умолчанию — все объекты модели цели)
         logger: опциональный logger (JobRunner.logger)
 
     Returns:
-        dict: total — проверено услуг, with_problems — из них с проблемами,
+        dict: total — проверено объектов, with_problems — из них с проблемами,
               updated — у скольких список проблем изменился
     """
-    from .custom_fields import ensure_service_custom_fields
-    from .models import ObuServices
+    from .custom_fields import ensure_problems_field
 
-    ensure_service_custom_fields()
+    ensure_problems_field(target)
 
-    if services is None:
-        services = ObuServices.objects.all()
-    services = list(services.only('pk', 'custom_field_data'))
+    model = target.model
+    if queryset is None:
+        queryset = model.objects.all()
+    objects = list(queryset.only('pk', 'custom_field_data'))
 
     today = timezone.localdate()
 
-    # pk услуги → множество кодов проблем
-    problems = {service.pk: set() for service in services}
-    for check in SERVICE_CHECKS:
-        for pk in check.evaluate(services, today):
+    # pk объекта → множество кодов проблем
+    problems = {obj.pk: set() for obj in objects}
+    for check in target.checks:
+        for pk in check.evaluate(objects, today):
             problems[pk].add(check.code)
 
-    order = [check.code for check in SERVICE_CHECKS]
-    updated = 0
-    for service in services:
-        new_value = [code for code in order if code in problems[service.pk]] or None
-        old_value = service.custom_field_data.get(SERVICE_PROBLEMS_FIELD) or None
+    order = [check.code for check in target.checks]
+    changed = []
+    for obj in objects:
+        new_value = [code for code in order if code in problems[obj.pk]] or None
+        old_value = obj.custom_field_data.get(target.field) or None
         if new_value == old_value:
             continue
+        obj.custom_field_data = dict(obj.custom_field_data)
+        obj.custom_field_data[target.field] = new_value
+        changed.append(obj)
 
-        data = dict(service.custom_field_data)
-        data[SERVICE_PROBLEMS_FIELD] = new_value
-        # update() вместо save(): без changelog и без сигналов post_save
-        ObuServices.objects.filter(pk=service.pk).update(custom_field_data=data)
-        updated += 1
+    # bulk_update вместо save(): без changelog и без сигналов post_save
+    if changed:
+        model.objects.bulk_update(changed, ['custom_field_data'], batch_size=500)
 
     stats = {
-        'total': len(services),
+        'total': len(objects),
         'with_problems': sum(1 for codes in problems.values() if codes),
-        'updated': updated,
+        'updated': len(changed),
     }
     if logger:
         logger.info(
-            f"  ✓ Проблемы услуг пересчитаны: с проблемами {stats['with_problems']} "
+            f"  ✓ {target.label}: с проблемами {stats['with_problems']} "
             f"из {stats['total']}, изменено {stats['updated']}"
         )
     return stats
+
+
+def recalc_service_problems(queryset=None, logger=None):
+    """Пересчёт проблем услуг (CF service_problems)."""
+    return recalc_problems(SERVICE_TARGET, queryset, logger)
+
+
+def recalc_vm_problems(queryset=None, logger=None):
+    """Пересчёт проблем ВМ (CF vm_problems)."""
+    return recalc_problems(VM_TARGET, queryset, logger)
+
+
+def recalc_all_problems(logger=None):
+    """
+    Пересчёт проблем всех целей.
+
+    Порядок важен на будущее: сначала ВМ, потом услуги — услуги будут
+    наследовать проблемы своих ВМ.
+    """
+    return {
+        'vm': recalc_vm_problems(logger=logger),
+        'service': recalc_service_problems(logger=logger),
+    }

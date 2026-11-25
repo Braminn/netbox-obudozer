@@ -164,19 +164,21 @@ def sync_services_cf_view(request):
 
 @permission_required('netbox_obudozer.view_vcentersyncaccess')
 def recalc_problems_view(request):
-    """POST: пересчитывает проблемы всех услуг (CF service_problems), возвращает JSON."""
+    """POST: пересчитывает проблемы всех ВМ и услуг (CF vm_problems, service_problems), возвращает JSON."""
     if request.method != 'POST':
         return JsonResponse({'error': 'Method not allowed'}, status=405)
 
     try:
-        from .problems import recalc_service_problems
+        from .problems import recalc_all_problems
 
-        stats = recalc_service_problems()
+        stats = recalc_all_problems()
+        vm, service = stats['vm'], stats['service']
         return JsonResponse({
             'success': True,
             'message': (
-                f"Проверено услуг: {stats['total']}, с проблемами: {stats['with_problems']}, "
-                f"изменено: {stats['updated']}"
+                f"ВМ: с проблемами {vm['with_problems']} из {vm['total']}, изменено {vm['updated']}. "
+                f"Услуги: с проблемами {service['with_problems']} из {service['total']}, "
+                f"изменено {service['updated']}."
             ),
         })
     except Exception as e:

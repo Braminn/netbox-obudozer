@@ -228,27 +228,22 @@ def ensure_contact_custom_fields():
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# ObuServices
+# Поля проблем (service_problems, vm_problems) — см. problems.py
 # ──────────────────────────────────────────────────────────────────────────────
 
-SERVICE_PROBLEMS_CHOICESET = 'Проблемы услуг OBU'
-
-
-def _ensure_service_problems_choiceset():
+def _ensure_problems_choiceset(target):
     """
-    ChoiceSet для service_problems, собранный из реестра проверок (problems.SERVICE_CHECKS).
+    ChoiceSet для поля проблем, собранный из проверок цели (target.checks).
 
     Варианты синхронизируются при каждом вызове: новые проверки добавляются,
     лейблы и цвета обновляются. Удалённые из реестра коды тоже убираются —
-    после пересчёта ни у одной услуги их уже не будет.
+    после пересчёта ни у одного объекта их уже не будет.
     """
-    from .problems import SERVICE_CHECKS
-
-    choices = [[check.code, check.label] for check in SERVICE_CHECKS]
-    colors = {check.code: check.color for check in SERVICE_CHECKS}
+    choices = [[check.code, check.label] for check in target.checks]
+    colors = {check.code: check.color for check in target.checks}
 
     choiceset, created = CustomFieldChoiceSet.objects.get_or_create(
-        name=SERVICE_PROBLEMS_CHOICESET,
+        name=target.choiceset,
         defaults={'extra_choices': choices, 'choice_colors': colors},
     )
     if not created and (choiceset.extra_choices != choices or choiceset.choice_colors != colors):
@@ -258,20 +253,17 @@ def _ensure_service_problems_choiceset():
     return choiceset
 
 
-def ensure_service_custom_fields():
-    """Создаёт и привязывает к ObuServices поля плагина (сейчас — service_problems)."""
-    from .models import ObuServices
-    from .problems import SERVICE_PROBLEMS_FIELD
-
+def ensure_problems_field(target):
+    """Создаёт multiselect-поле проблем цели (problems.ProblemTarget) и привязывает к её модели."""
     # Варианты ChoiceSet актуализируются при каждом вызове, даже если поле уже есть
-    choiceset = _ensure_service_problems_choiceset()
+    choiceset = _ensure_problems_choiceset(target)
 
     field, _ = CustomField.objects.get_or_create(
-        name=SERVICE_PROBLEMS_FIELD,
+        name=target.field,
         defaults={
-            'label': 'Проблемы сервиса',
+            'label': target.label,
             'type': 'multiselect',
-            'description': 'Выявленные проблемы услуги (заполняется автоматически, см. problems.py)',
+            'description': target.description,
             'required': False,
             'ui_visible': 'if-set',
             'ui_editable': 'no',  # Read-only, управляется пересчётом проблем
@@ -279,9 +271,17 @@ def ensure_service_custom_fields():
         }
     )
 
-    service_ct = ContentType.objects.get_for_model(ObuServices)
-    if service_ct not in field.object_types.all():
-        field.object_types.add(service_ct)
+    ct = ContentType.objects.get_for_model(target.model)
+    if ct not in field.object_types.all():
+        field.object_types.add(ct)
+
+
+def ensure_problems_fields():
+    """Создаёт поля проблем для всех целей из problems.PROBLEM_TARGETS."""
+    from .problems import PROBLEM_TARGETS
+
+    for target in PROBLEM_TARGETS:
+        ensure_problems_field(target)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -292,7 +292,7 @@ def ensure_custom_fields(logger=None):
     """Создаёт все custom fields плагина. Вызывается в фазе подготовки синхронизации."""
     ensure_vm_custom_fields()
     ensure_contact_custom_fields()
-    ensure_service_custom_fields()
+    ensure_problems_fields()
 
     if logger:
         logger.info("  ✓ Custom Fields готовы")
