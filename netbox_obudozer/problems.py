@@ -300,9 +300,13 @@ SERVICE_PROBLEMS_FIELD = SERVICE_TARGET.field
 # Пересчёт
 # ──────────────────────────────────────────────────────────────────────────────
 
-def problem_summary(target):
+def problem_summary(target, queryset=None):
     """
     Сводка по проблемам цели для дашборда — одним запросом.
+
+    Args:
+        target: ProblemTarget
+        queryset: какие объекты учитывать (по умолчанию — все объекты модели цели)
 
     Returns:
         dict: total — объектов с хотя бы одной проблемой,
@@ -311,7 +315,9 @@ def problem_summary(target):
     """
     counts = {}
     total = 0
-    for codes in target.model.objects.values_list(f'custom_field_data__{target.field}', flat=True):
+    if queryset is None:
+        queryset = target.model.objects.all()
+    for codes in queryset.values_list(f'custom_field_data__{target.field}', flat=True):
         if not codes:
             continue
         total += 1

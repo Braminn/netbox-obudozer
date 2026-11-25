@@ -729,20 +729,39 @@ def dashboard_view(request):
     from .resources import vm_resources
 
     # Блок «Проблемы»: по каждому варианту поля проблем — счётчик и ссылка на
-    # стандартный список NetBox с фильтром по этому коду
+    # стандартный список NetBox с фильтром по этому коду.
+    # ВМ учитываются только активные (offline/failed не показываются) и не из
+    # кластеров PLUGINS_CONFIG['problems_exclude_clusters'] — и в счётчиках,
+    # и в ссылках (доп. фильтры status=active и cluster_id__n=...).
+    from django.conf import settings
+    from virtualization.models import Cluster
+
+    exclude_names = settings.PLUGINS_CONFIG.get('netbox_obudozer', {}).get('problems_exclude_clusters', [])
+    exclude_cluster_ids = list(Cluster.objects.filter(name__in=exclude_names).values_list('pk', flat=True))
+
+    vm_problem_qs = VirtualMachine.objects.filter(status='active').exclude(cluster_id__in=exclude_cluster_ids)
+    vm_extra_filter = '&status=active' + ''.join(f'&cluster_id__n={pk}' for pk in exclude_cluster_ids)
+
+    vm_note = 'только активные'
+    if exclude_names:
+        vm_note += ', без кластеров: ' + ', '.join(exclude_names)
+
     problem_blocks = []
-    for title, icon, target, list_url in (
-        ('Услуги', 'mdi-briefcase-outline', SERVICE_TARGET, reverse('plugins:netbox_obudozer:obuservices_list')),
-        ('Виртуальные машины', 'mdi-monitor', VM_TARGET, reverse('virtualization:virtualmachine_list')),
+    for title, icon, target, list_url, queryset, extra_filter, note in (
+        ('Услуги', 'mdi-briefcase-outline', SERVICE_TARGET,
+         reverse('plugins:netbox_obudozer:obuservices_list'), None, '', ''),
+        ('Виртуальные машины', 'mdi-monitor', VM_TARGET,
+         reverse('virtualization:virtualmachine_list'), vm_problem_qs, vm_extra_filter, vm_note),
     ):
-        summary = problem_summary(target)
+        summary = problem_summary(target, queryset)
         for row in summary['rows']:
-            row['url'] = f'{list_url}?cf_{target.field}={row["code"]}'
+            row['url'] = f'{list_url}?cf_{target.field}={row["code"]}{extra_filter}'
         problem_blocks.append({
             'title': title,
             'icon': icon,
+            'note': note,
             'total': summary['total'],
-            'total_url': f'{list_url}?cf_{target.field}__empty=false',
+            'total_url': f'{list_url}?cf_{target.field}__empty=false{extra_filter}',
             'rows': summary['rows'],
         })
 

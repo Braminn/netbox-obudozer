@@ -68,7 +68,10 @@
         <div class="col-md-6 mb-3 mb-md-0">
             <div class="card h-100">
                 <div class="card-header d-flex justify-content-between align-items-center">
-                    <strong><i class="mdi {{ block.icon }}"></i> Проблемы: {{ block.title }}</strong>
+                    <span>
+                        <strong><i class="mdi {{ block.icon }}"></i> Проблемы: {{ block.title }}</strong>
+                        {% if block.note %}<span class="text-muted small ms-2">{{ block.note }}</span>{% endif %}
+                    </span>
                     <span class="small text-muted">
                         с проблемами:
                         <a href="{{ block.total_url }}" class="fw-bold {% if block.total %}text-danger{% else %}text-muted{% endif %}">{{ block.total }}</a>

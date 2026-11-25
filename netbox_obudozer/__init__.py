@@ -50,6 +50,9 @@ class ObudozerPluginConfig(PluginConfig):
 
         # Настройки отслеживания EOL версий ОС
         'eol_warning_days': 90,      # за сколько дней до eol_date статус становится "скоро истекает"
+
+        # Кластеры (по имени), ВМ которых не учитываются в блоке проблем ВМ на дашборде
+        'problems_exclude_clusters': ['Keysystems'],
     }
     min_version = '4.4.0'
     template_extensions = 'template_extensions.template_extensions'
