@@ -17,6 +17,9 @@ urlpatterns = [
     # Синхронизация custom field obu_services
     path('sync-services-cf/', views.sync_services_cf_view, name='sync_services_cf'),
 
+    # Пересчёт проблем услуг (custom field service_problems)
+    path('recalc-problems/', views.recalc_problems_view, name='recalc_problems'),
+
     # Проверка подключения к GitLab
     path('test-gitlab-connection/', views.test_gitlab_connection_view, name='test_gitlab_connection'),
 

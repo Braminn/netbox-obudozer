@@ -69,6 +69,28 @@ def sync_tenant_to_vms(sender, instance, created, **kwargs):
         vm.save()
 
 
+@receiver(post_save, sender=ObuServices)
+def recalc_problems_on_service_save(sender, instance, **kwargs):
+    """
+    Пересчитывает проблемы услуги (CF service_problems) сразу после её сохранения,
+    чтобы на странице услуги после редактирования были видны актуальные проблемы.
+
+    Рекурсии нет: recalc_service_problems() пишет через QuerySet.update(),
+    который post_save не вызывает.
+    """
+    from .problems import recalc_service_problems, SERVICE_PROBLEMS_FIELD
+
+    recalc_service_problems(ObuServices.objects.filter(pk=instance.pk))
+
+    # Актуализируем и объект в памяти: если в этом же запросе его сохранят
+    # ещё раз, старое значение не затрёт только что записанное.
+    instance.custom_field_data[SERVICE_PROBLEMS_FIELD] = (
+        ObuServices.objects.filter(pk=instance.pk)
+        .values_list(f'custom_field_data__{SERVICE_PROBLEMS_FIELD}', flat=True)
+        .first()
+    )
+
+
 @receiver([post_save, post_delete], sender=ServiceVMAssignment)
 def sync_tenant_on_assignment_change(sender, instance, **kwargs):
     """

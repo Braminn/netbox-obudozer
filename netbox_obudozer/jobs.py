@@ -5,6 +5,7 @@
 """
 from netbox.jobs import JobRunner
 
+from .problems import recalc_service_problems
 from .sync import sync_all_vcenters, sync_cluster_to_service
 
 # Привязки кластер → услуга, которые синхронизируются автоматически после vCenter sync
@@ -112,6 +113,14 @@ class VCenterSyncJob(JobRunner):
                 self.logger.info("🔗 Синхронизация кластеров → услуги")
                 for service_id, cluster_id in AUTO_CLUSTER_SERVICE_BINDINGS:
                     sync_cluster_to_service(service_id, cluster_id, logger=self.logger)
+
+            # Пересчёт проблем услуг. Ошибка здесь не должна валить всю синхронизацию.
+            self.logger.info("")
+            self.logger.info("🩺 Пересчёт проблем услуг")
+            try:
+                recalc_service_problems(logger=self.logger)
+            except Exception as e:
+                self.logger.error(f"❌ Ошибка пересчёта проблем услуг: {e}")
 
         except Exception as e:
             # Критическая ошибка - логируем и пробрасываем исключение

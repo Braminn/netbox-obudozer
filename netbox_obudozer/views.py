@@ -163,6 +163,27 @@ def sync_services_cf_view(request):
 
 
 @permission_required('netbox_obudozer.view_vcentersyncaccess')
+def recalc_problems_view(request):
+    """POST: пересчитывает проблемы всех услуг (CF service_problems), возвращает JSON."""
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+
+    try:
+        from .problems import recalc_service_problems
+
+        stats = recalc_service_problems()
+        return JsonResponse({
+            'success': True,
+            'message': (
+                f"Проверено услуг: {stats['total']}, с проблемами: {stats['with_problems']}, "
+                f"изменено: {stats['updated']}"
+            ),
+        })
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+@permission_required('netbox_obudozer.view_vcentersyncaccess')
 def test_gitlab_connection_view(request):
     """
     Проверка подключения к GitLab. POST → результат через messages → redirect обратно.
