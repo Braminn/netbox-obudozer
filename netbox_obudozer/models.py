@@ -217,11 +217,31 @@ class OperatingSystem(NetBoxModel):
         return VirtualMachine.objects.filter(custom_field_data__os_pretty_name=self.name).count()
 
 
+class NoTableManager(models.Manager):
+    """
+    Менеджер для моделей-«прав» с managed=False (таблицы в БД нет).
+
+    NetBox 4.7 на странице /core/system/ делает model.objects.count() по всем
+    публичным ObjectType — без этого менеджера падает ProgrammingError
+    «relation ... does not exist». Пустой queryset (.none()) отвечает 0 без
+    запроса к БД.
+
+    Сделать модель непубличной (_netbox_private = True) нельзя: форма
+    ObjectPermission показывает только public ObjectType
+    (users.constants.OBJECTPERMISSION_OBJECT_TYPES) — право пропало бы из UI.
+    """
+
+    def get_queryset(self):
+        return super().get_queryset().none()
+
+
 class EolAccess(models.Model):
     """
     Модель без таблицы — только для управления правом доступа к дашборду устаревших ОС.
     Таблица в БД не создаётся (managed=False).
     """
+
+    objects = NoTableManager()
 
     class Meta:
         managed = False
@@ -239,6 +259,8 @@ class DashboardAccess(models.Model):
     Таблица в БД не создаётся (managed=False).
     """
 
+    objects = NoTableManager()
+
     class Meta:
         managed = False
         default_permissions = ()
@@ -254,6 +276,8 @@ class VCenterSyncAccess(models.Model):
     Модель без таблицы — только для управления правами доступа к синхронизации vCenter.
     Таблица в БД не создаётся (managed=False).
     """
+
+    objects = NoTableManager()
 
     class Meta:
         managed = False
